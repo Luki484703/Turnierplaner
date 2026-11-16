@@ -215,12 +215,15 @@ function autoPlan(){
   const fits=(Q,G)=>{const min=Math.floor(N/G);return !Q||(Q%G===0?Q/G<min:Q<=G*(min-1)+G);};
   let best=null;
   const maxFit=(Q,G,minG)=>{for(let g=15;g>=minG;g--){if(tryOne(Q,G,g).planEnd<=toMin(cfg.end))return g;}return 0;};
-  outer: for(const Q of Qs){
-    for(const minG of [7,6]){
-      for(const G of Gs){
-        if(!fits(Q,G))continue;
-        const g=maxFit(Q,G,minG);
-        if(g){best={Q,G,g};break outer;}
+  const tiers=[Gs.filter(G=>G>=2&&N%G===0),[1],Gs.filter(G=>G>=2&&N%G!==0)];
+  outer: for(const tier of tiers){
+    for(const Q of Qs){
+      for(const minG of [7,6]){
+        for(const G of tier){
+          if(!fits(Q,G))continue;
+          const g=maxFit(Q,G,minG);
+          if(g){best={Q,G,g};break outer;}
+        }
       }
     }
   }
@@ -240,24 +243,40 @@ function buildRaw(){
   const G=int(cfg.groups,2,1,Math.max(1,Math.floor(N/2)));
   const H=int(cfg.halls,2,1,4);
   const game=int(cfg.gameMin,8,1,60),chg=int(cfg.changeMin,2,0,30);
-  const groups=Array.from({length:G},(_,g)=>({name:LETTERS[g],idx:g,hall:g%H,teams:[]}));
+  const pooledMode=G%H!==0;
+  const groups=Array.from({length:G},(_,g)=>({name:LETTERS[g],idx:g,hall:pooledMode?null:g%H,teams:[]}));
   cfg.teams.forEach((t,i)=>groups[i%G].teams.push(t.id));
   const t0=toMin(cfg.start)+int(cfg.setupMin,20,0,120);
   const matches=[];let groupEnd=t0;
   const hallSlots=[];
-  for(let h=0;h<H;h++){
-    const gs=groups.filter(g=>g.hall===h);
-    const lists=gs.map(g=>roundRobin(g.teams).map(([a,b])=>({a,b,group:g.name})));
+  const push=(m,h,k)=>{const [x,y]=[m.a,m.b].sort();const st=t0+k*(game+chg);
+    matches.push({id:"g-"+x+"-"+y,kind:"G",group:m.group,hall:h,slot:k,a:m.a,b:m.b,start:st,dur:game});
+    groupEnd=Math.max(groupEnd,st+game);};
+  const interleave=gs=>{const lists=gs.map(g=>roundRobin(g.teams).map(([a,b])=>({a,b,group:g.name})));
     const merged=[];const mx=Math.max(0,...lists.map(l=>l.length));
-    for(let i=0;i<mx;i++)lists.forEach(l=>{if(l[i])merged.push(l[i])});
-    const ordered=spread(merged);
-    hallSlots[h]=ordered.length;
-    ordered.forEach((m,k)=>{
-      const [x,y]=[m.a,m.b].sort();
-      const st=t0+k*(game+chg);
-      matches.push({id:"g-"+x+"-"+y,kind:"G",group:m.group,hall:h,slot:k,a:m.a,b:m.b,start:st,dur:game});
-      groupEnd=Math.max(groupEnd,st+game);
-    });
+    for(let i=0;i<mx;i++)lists.forEach(l=>{if(l[i])merged.push(l[i])});return merged;};
+  if(pooledMode){
+    // alle Spiele gemeinsam auf die Hallen verteilen, kein Team zweimal gleichzeitig
+    const rem=interleave(groups);let prev=new Set();let k=0;
+    while(rem.length){
+      const used=new Set(),slot=[];
+      for(const strict of [true,false]){
+        for(let i=0;i<rem.length&&slot.length<H;){
+          const m=rem[i];
+          if(!used.has(m.a)&&!used.has(m.b)&&(!strict||(!prev.has(m.a)&&!prev.has(m.b)))){slot.push(m);used.add(m.a);used.add(m.b);rem.splice(i,1);}
+          else i++;
+        }
+      }
+      slot.forEach((m,h)=>push(m,h,k));
+      for(let h=0;h<H;h++)hallSlots[h]=slot.length>h?k+1:(hallSlots[h]||0);
+      prev=used;k++;
+    }
+  }else{
+    for(let h=0;h<H;h++){
+      const ordered=spread(interleave(groups.filter(g=>g.hall===h)));
+      hallSlots[h]=ordered.length;
+      ordered.forEach((m,k)=>push(m,h,k));
+    }
   }
   // Finalrunde
   const Qwant={QF:8,SF:4,F:2,NONE:0}[cfg.ko]??4;
@@ -306,7 +325,7 @@ function buildRaw(){
   const awardStart=Math.ceil((koEnd+5)/5)*5;
   const award=int(cfg.awardMin,10,0,60),clean=int(cfg.cleanupMin,20,0,90);
   const cleanStart=awardStart+award,planEnd=cleanStart+clean;
-  return {N,G,H,Q,Qwant,groups,matches,ko,seeds,t0,groupEnd,koStart,koEnd,awardStart,cleanStart,planEnd,game,chg,hallSlots};
+  return {N,G,H,Q,Qwant,pooledMode,groups,matches,ko,seeds,t0,groupEnd,koStart,koEnd,awardStart,cleanStart,planEnd,game,chg,hallSlots};
 }
 
 /* ---------- Tabellen und Auflösung ---------- */
@@ -359,6 +378,8 @@ function solve(P){
   P.ko.forEach(m=>{const H=ref(m.home),A=ref(m.away);out[m.id]={home:H,away:A,result:koWinner(m,H.id,A.id)};});
   return {tabs,ko:out};
 }
+const hallTxt=(P,g)=>g.hall==null?(P.H===2?"beide Hallen":"alle Hallen"):"Halle "+(g.hall+1);
+const hallGroups=(P,h)=>[...new Set(P.matches.filter(m=>m.hall===h).map(m=>m.group))].sort();
 const labelShort=id=>id.replace(/^VF/,"VF ").replace(/^HF/,"HF ");
 
 /* ---------- Speichern ---------- */
@@ -469,7 +490,7 @@ function isNow(start,dur){
 function viewPlan(){
   const H=P.H;const out=[];
   out.push(`<div class="plan" style="--halls:${H}">`);
-  out.push(`<div class="row head"><span>Zeit</span>${Array.from({length:H},(_,h)=>`<span>Halle ${h+1}${P.groups.filter(g=>g.hall===h).length?" · Gruppe "+P.groups.filter(g=>g.hall===h).map(g=>g.name).join(", "):""}</span>`).join("")}</div>`);
+  out.push(`<div class="row head"><span>Zeit</span>${Array.from({length:H},(_,h)=>`<span>Halle ${h+1}${hallGroups(P,h).length?" · Gruppe "+hallGroups(P,h).join(", "):""}</span>`).join("")}</div>`);
   out.push(`<div class="sep"><span class="time">${cfg.start}</span><span>Ankommen, Umziehen, Aufbau, Begrüßung und Regeln</span></div>`);
   const slots=Math.max(0,...P.hallSlots);
   for(let k=0;k<slots;k++){
@@ -490,6 +511,8 @@ function viewPlan(){
 function warnBox(){
   const w=[];const diff=toMin(cfg.end)-P.planEnd;
   if(diff<0)w.push(`Der Plan endet um ${fmt(P.planEnd)} und damit ${-diff} Minuten nach ${cfg.end}. Kürzere Spielzeit, weniger Wechselzeit oder Finalrunde erst ab Halbfinale helfen.`);
+  const sz=P.groups.map(g=>g.teams.length);
+  if(Math.min(...sz)!==Math.max(...sz))w.push(`Die Gruppen sind unterschiedlich groß (${sz.join(", ")} Teams), weil für gleich große Gruppen oder „Jeder gegen jeden“ die Zeit nicht reicht. Für die Finalrunde zählen die Plätze in der eigenen Gruppe. Werden Gruppenplätze untereinander verglichen, zählen Punkte pro Spiel.`);
   if(P.Qwant&&P.Q!==P.Qwant)w.push(`Für die gewählte Finalrunde gibt es zu wenige Mannschaften, der Plan startet deshalb direkt mit ${P.Q===4?"dem Halbfinale":P.Q===2?"dem Finale":"keiner Finalrunde"}.`);
   return w.map(x=>`<div class="note warn">${esc(x)}</div>`).join("");
 }
@@ -499,7 +522,7 @@ function viewTables(){
   const cards=P.groups.map(g=>{
     const tb=S.tabs[g.name];
     const rows=tb.rows.map((r,i)=>`<tr class="${q.has(g.name+"|"+(i+1))?"q":""}"><td>${i+1}</td><td>${esc(teamName(r.id))}</td><td class="n">${r.sp}</td><td class="n">${r.s}</td><td class="n">${r.u}</td><td class="n">${r.n}</td><td class="n">${r.tf}:${r.tg}</td><td class="n">${r.tf-r.tg>0?"+":""}${r.tf-r.tg}</td><td class="n"><b>${r.pts}</b></td></tr>`).join("");
-    return `<div class="card stack"><div class="btns" style="justify-content:space-between"><h3>Gruppe ${g.name} · Halle ${g.hall+1}</h3><span class="muted small">${tb.played} von ${tb.total} Spielen</span></div><div class="scroll"><table><thead><tr><th>Pl.</th><th>Mannschaft</th><th class="n">Sp</th><th class="n">S</th><th class="n">U</th><th class="n">N</th><th class="n">Tore</th><th class="n">Diff</th><th class="n">Pkt</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+    return `<div class="card stack"><div class="btns" style="justify-content:space-between"><h3>Gruppe ${g.name} · ${hallTxt(P,g)}</h3><span class="muted small">${tb.played} von ${tb.total} Spielen</span></div><div class="scroll"><table><thead><tr><th>Pl.</th><th>Mannschaft</th><th class="n">Sp</th><th class="n">S</th><th class="n">U</th><th class="n">N</th><th class="n">Tore</th><th class="n">Diff</th><th class="n">Pkt</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
   }).join("");
   const best=P.seeds.filter(s=>!s.group);
   const bestNote=best.length?`<p class="muted small">Zusätzlich kommen ${best.length===1?"der beste":"die "+best.length+" besten"} ${best[0].place}. aller Gruppen weiter, verglichen nach Punkten, Tordifferenz und Toren pro Spiel.</p>`:"";
@@ -554,7 +577,7 @@ function viewSetup(){
     ${n("halls","Hallen in der Vorrunde",1,4)}
     ${n("playersTotal","Spieler/innen pro Team",1,20)}
     ${n("playersField","davon auf dem Feld",1,20)}
-  </div><p class="muted small">Aktuell: ${P.groups.map(g=>`Gruppe ${g.name} mit ${g.teams.length} Teams in Halle ${g.hall+1}`).join(", ")}.</p></div>
+  </div><p class="muted small">Aktuell: ${P.groups.map(g=>`Gruppe ${g.name} mit ${g.teams.length} Teams (${hallTxt(P,g)})`).join(", ")}.</p></div>
   <div class="card stack"><h2>Zeiten in Minuten</h2><div class="form">
     ${n("setupMin","Aufbau und Begrüßung",0,120)}
     ${n("gameMin","Spielzeit Vorrunde",1,60)}
@@ -597,8 +620,8 @@ function printHTML(){
       rows+=m?`<td class="gr">${m.group}</td><td>${esc(teamName(m.a))} – ${esc(teamName(m.b))}</td><td class="sc">${sc(m.id)}</td>`:`<td></td><td></td><td></td>`;}
     rows+=`</tr>`;
   }
-  const hallHead=Array.from({length:P.H},(_,h)=>`<th colspan="3">Halle ${h+1} · Gruppe ${P.groups.filter(g=>g.hall===h).map(g=>g.name).join(", ")||"–"}</th>`).join("");
-  const groups=P.groups.map(g=>`<div class="grp"><h3>Gruppe ${g.name} <small>Halle ${g.hall+1}</small></h3><ol>${g.teams.map(id=>{const t=cfg.teams.find(x=>x.id===id);return `<li>${esc(teamName(id))}${t&&t.klasse?` <small>(${esc(t.klasse)})</small>`:""}</li>`}).join("")}</ol></div>`).join("");
+  const hallHead=Array.from({length:P.H},(_,h)=>`<th colspan="3">Halle ${h+1} · Gruppe ${hallGroups(P,h).join(", ")||"–"}</th>`).join("");
+  const groups=P.groups.map(g=>`<div class="grp"><h3>Gruppe ${g.name} <small>${hallTxt(P,g)}</small></h3><ol>${g.teams.map(id=>{const t=cfg.teams.find(x=>x.id===id);return `<li>${esc(teamName(id))}${t&&t.klasse?` <small>(${esc(t.klasse)})</small>`:""}</li>`}).join("")}</ol></div>`).join("");
   const ko=P.ko.map(m=>{const k=S.ko[m.id];return `<tr><td class="tm">${fmt(m.start)}</td><td><b>${esc(m.label)}</b></td><td>${nm(k.home)} – ${nm(k.away)}</td><td class="sc">${sc(m.id)}</td></tr>`}).join("");
   const tables=P.groups.map(g=>{const tb=S.tabs[g.name];const any=tb.played>0;
     return `<div class="grp"><h3>Gruppe ${g.name}</h3><table class="tb"><tr><th>Pl.</th><th>Mannschaft</th><th>Sp</th><th>Tore</th><th>Pkt</th></tr>${tb.rows.map((r,i)=>`<tr><td>${i+1}</td><td>${any?esc(teamName(r.id)):""}</td><td>${any?r.sp:""}</td><td>${any?r.tf+":"+r.tg:""}</td><td>${any?r.pts:""}</td></tr>`).join("")}</table></div>`}).join("");
