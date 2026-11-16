@@ -1,0 +1,785 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="manifest" href="manifest.webmanifest"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Turnier"><link rel="apple-touch-icon" href="icon-180.png"><meta name="theme-color" content="#1d7444"></head><body>
+<title>Turnierplaner Fußball</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: Kopf mit Status und "Als nächstes", darunter Reiter; Spielplan als Zeitachse mit einer Spalte je Halle */
+:root{
+  --bg:#f4f7f4; --paper:#ffffff; --fg:#16201a; --muted:#5a665e; --line:#d5ddd7; --soft:#e6f1ea;
+  --pitch:#1d7444; --pitch-fg:#ffffff; --chalk:#b8460e; --ok:#1d7444; --warn:#a15c00; --bad:#b42318;
+  --now:#fff4d6;
+  --display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1512; --paper:#17201b; --fg:#e6ece7; --muted:#9ba89f; --line:#2b3730; --soft:#1c3024;
+  --pitch:#4cbb7a; --pitch-fg:#0c1a12; --chalk:#f39a5a; --ok:#4cbb7a; --warn:#f0b44c; --bad:#f2786c;
+  --now:#3a3218; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1512; --paper:#17201b; --fg:#e6ece7; --muted:#9ba89f; --line:#2b3730; --soft:#1c3024;
+  --pitch:#4cbb7a; --pitch-fg:#0c1a12; --chalk:#f39a5a; --ok:#4cbb7a; --warn:#f0b44c; --bad:#f2786c;
+  --now:#3a3218; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45}
+.wrap{max-width:1100px;margin:0 auto;padding-block:20px 60px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:20px}
+h1,h2,h3{font-family:var(--display);font-weight:700;margin:0;text-wrap:balance;letter-spacing:.01em}
+h1{font-size:2.3rem;line-height:1.05}
+h2{font-size:1.5rem}
+h3{font-size:1.2rem}
+p{margin:0}
+.muted{color:var(--muted)}
+.small{font-size:.85rem}
+header{display:grid;gap:10px}
+.topR{display:grid;gap:8px;justify-items:end}
+@media (max-width:640px){.topR{justify-items:start}}
+.top{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;justify-content:space-between}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font-size:.78rem;font-weight:600;padding:3px 10px;border-radius:99px;background:var(--soft);color:var(--pitch);white-space:nowrap}
+.chip.warn{background:transparent;border:1px solid var(--warn);color:var(--warn)}
+.chip.bad{background:transparent;border:1px solid var(--bad);color:var(--bad)}
+.next{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.next>div{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
+.next .lbl{font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600}
+.next .m{font-weight:700;font-size:1.05rem}
+nav{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--line)}
+nav button{font:inherit;font-weight:600;background:none;border:0;border-bottom:3px solid transparent;color:var(--muted);padding:10px 12px;cursor:pointer;white-space:nowrap}
+nav button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--pitch)}
+nav button:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--pitch);outline-offset:2px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:14px}
+.stack{display:grid;gap:14px}
+.scroll{overflow-x:auto}
+/* Spielplan */
+.plan{display:grid;gap:6px}
+.row{display:grid;grid-template-columns:64px repeat(var(--halls),minmax(0,1fr));gap:8px;align-items:stretch}
+.row.head{font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600}
+.row .time{font-variant-numeric:tabular-nums;font-weight:700;padding-top:10px}
+.row.now .time{color:var(--chalk)}
+.row.now .match{background:var(--now)}
+.sep{display:flex;gap:10px;align-items:center;padding:8px 10px;background:var(--soft);border-radius:6px;font-weight:600;font-size:.9rem}
+.sep .time{font-variant-numeric:tabular-nums;min-width:54px}
+.match{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px 10px;display:grid;gap:6px;min-width:0}
+.match.ko{border-color:var(--chalk)}
+.match.done{border-left:4px solid var(--pitch)}
+.match .meta{display:flex;justify-content:space-between;gap:8px;font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.match .meta .tag{color:var(--chalk)}
+.line{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:8px;align-items:center}
+.line .t{min-width:0;overflow-wrap:anywhere;font-weight:500}
+.line .t.r{text-align:right}
+.line .t.win{font-weight:700;color:var(--pitch)}
+.line .t.open{color:var(--muted);font-style:italic;font-weight:400}
+.score{display:flex;align-items:center;gap:4px}
+.score input[type=number]{width:44px;text-align:center;font:inherit;font-weight:700;font-variant-numeric:tabular-nums;padding:5px 2px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
+.score input:disabled{opacity:.45}
+.pen{display:flex;justify-content:center;align-items:center;gap:6px;font-size:.8rem;color:var(--muted)}
+.pen input[type=number]{width:44px;padding:3px 2px;text-align:center;font:inherit;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
+.empty-hall{border:1px dashed var(--line);border-radius:8px}
+@media (max-width:640px){
+  .row{grid-template-columns:1fr}
+  .row.head{display:none}
+  .row .time{padding-top:4px}
+  .row .match[data-hall]::before{content:attr(data-hall);font-size:.7rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+  .empty-hall{display:none}
+}
+/* Tabellen */
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+.grid2>*{min-width:0}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left}
+th{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+td.n,th.n{text-align:right}
+tr.q td{background:var(--soft)}
+tr.q td:first-child{box-shadow:inset 3px 0 0 var(--pitch)}
+/* Finalrunde */
+.bracket{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(220px,1fr);gap:14px;overflow-x:auto;padding-bottom:6px}
+.bracket .col{display:grid;gap:10px;align-content:space-around}
+.bracket .col h3{align-self:start}
+.podium{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+.podium div{border-radius:8px;padding:12px;background:var(--soft)}
+.podium b{display:block;font-family:var(--display);font-size:1.6rem}
+/* Formulare */
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px 16px}
+label.f{display:grid;gap:4px;font-size:.8rem;font-weight:600;color:var(--muted)}
+label.f.chk{display:flex;align-items:center;gap:8px;color:var(--fg);font-size:.9rem;font-weight:500;padding-top:18px}
+input[type=text],input[type=number],input[type=time],input[type=date],select{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 9px;width:100%;min-width:0}
+.btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button.b{font:inherit;font-weight:600;border-radius:6px;padding:8px 14px;cursor:pointer;border:1px solid var(--pitch);background:var(--pitch);color:var(--pitch-fg)}
+button.b.sec{background:transparent;color:var(--pitch)}
+button.b.danger{background:transparent;color:var(--bad);border-color:var(--bad)}
+button.b:disabled{opacity:.5;cursor:not-allowed}
+.teams{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.team{display:grid;gap:8px}
+.team .hd{display:flex;gap:8px;align-items:center}
+.team .hd .g{font-size:.72rem;font-weight:700;color:var(--pitch);background:var(--soft);border-radius:99px;padding:2px 8px;white-space:nowrap}
+.players{display:grid;gap:4px}
+.pl{display:grid;grid-template-columns:62px 1fr;gap:6px;align-items:center;font-size:.75rem;color:var(--muted)}
+.pl input{padding:5px 8px}
+.pl.sub span{color:var(--chalk)}
+.note{padding:10px 12px;border-radius:6px;background:var(--soft);font-size:.9rem}
+.note.warn{background:transparent;border:1px solid var(--warn)}
+ul.rules{margin:0;padding-left:18px;display:grid;gap:4px}
+@media (prefers-reduced-motion:no-preference){.match{transition:background .2s}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="top">
+      <div>
+        <div class="muted small" id="hdrDate"></div>
+        <h1 id="hdrTitle">Fußballturnier</h1>
+      </div>
+      <div class="topR"><div class="chips" id="chips"></div><div class="btns" style="justify-content:flex-end"><button class="b" data-act="print" id="printBtn">Aushang drucken</button></div><p class="muted small" id="printMsg" hidden></p></div>
+    </div>
+    <div class="next" id="next"></div>
+  </header>
+  <nav role="tablist" id="tabs"></nav>
+  <main id="view"></main>
+</div>
+
+<script>
+(function(){
+"use strict";
+const LETTERS="ABCDEFGHIJKL";
+const DEF={
+  title:"Fußballturnier Jg. 8–10", date:"2026-11-20", start:"08:00", end:"11:30",
+  setupMin:20, numTeams:10, groups:2, halls:2, gameMin:8, changeMin:2, breakMin:10,
+  auto:true, koMode:"auto", ko:"SF", third:true, koGameMin:8, finalMin:10, awardMin:10, cleanupMin:20,
+  playersTotal:8, playersField:5, teams:[]
+};
+let cfg=JSON.parse(JSON.stringify(DEF));
+let results={};
+let store="loading"; // loading | db | local | offline
+let db=null;
+let tab="plan";
+let confirmReset=false, confirmDraw=false;
+
+/* ---------- Helpers ---------- */
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const toMin=t=>{const m=/^(\d{1,2}):(\d{2})/.exec(t||"");return m?(+m[1])*60+(+m[2]):480};
+const fmt=m=>{m=Math.round(m);return String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0")};
+const int=(v,d,lo,hi)=>{v=parseInt(v,10);if(isNaN(v))v=d;return Math.max(lo,Math.min(hi,v))};
+const num=v=>v===""||v==null||isNaN(+v)?null:+v;
+
+function ensureTeams(){
+  cfg.numTeams=int(cfg.numTeams,10,2,32);
+  cfg.playersTotal=int(cfg.playersTotal,8,1,20);
+  if(!Array.isArray(cfg.teams))cfg.teams=[];
+  let maxId=cfg.teams.reduce((m,t)=>Math.max(m,parseInt(String(t.id).slice(1),10)||0),0);
+  while(cfg.teams.length<cfg.numTeams){maxId++;cfg.teams.push({id:"t"+maxId,name:"Team "+(cfg.teams.length+1),klasse:"",captain:"",players:[]});}
+  if(cfg.teams.length>cfg.numTeams)cfg.teams.length=cfg.numTeams;
+  cfg.teams.forEach(t=>{if(!Array.isArray(t.players))t.players=[];while(t.players.length<cfg.playersTotal)t.players.push("");});
+}
+const teamName=id=>{const t=cfg.teams.find(x=>x.id===id);return t?(t.name||"Ohne Namen"):"?"};
+
+/* ---------- Spielplan berechnen ---------- */
+function roundRobin(ids){
+  const a=ids.slice();if(a.length%2)a.push(null);
+  const n=a.length,out=[];
+  for(let r=0;r<n-1;r++){
+    for(let i=0;i<n/2;i++){const x=a[i],y=a[n-1-i];if(x&&y)out.push(r%2?[y,x]:[x,y]);}
+    a.splice(1,0,a.pop());
+  }
+  return out;
+}
+function spread(list){
+  const L=list.slice(),out=[];
+  while(L.length){
+    const p1=out[out.length-1],p2=out[out.length-2];
+    const b1=new Set(p1?[p1.a,p1.b]:[]),b2=new Set(p2?[p2.a,p2.b]:[]);
+    let i=L.findIndex(m=>!b1.has(m.a)&&!b1.has(m.b)&&!b2.has(m.a)&&!b2.has(m.b));
+    if(i<0)i=L.findIndex(m=>!b1.has(m.a)&&!b1.has(m.b));
+    if(i<0)i=0;
+    out.push(L.splice(i,1)[0]);
+  }
+  return out;
+}
+/* Automatik: aus Teamzahl, Hallen und Zeitfenster alles andere berechnen */
+let autoInfo=null;
+function autoPlan(){
+  ensureTeams();
+  const N=cfg.teams.length,H=int(cfg.halls,2,1,4);
+  const T=toMin(cfg.end)-toMin(cfg.start);
+  cfg.setupMin=T>=180?20:T>=120?15:10;
+  cfg.cleanupMin=T>=180?20:T>=120?15:10;
+  cfg.awardMin=T>=120?10:5;
+  cfg.changeMin=2;
+  const Qs=cfg.koMode==="auto"?[8,4,2].filter(q=>q<=Math.floor(N*0.7)):[{QF:8,SF:4,F:2,NONE:0}[cfg.koMode]??4];
+  if(!Qs.length)Qs.push(0);
+  const maxG=Math.max(1,Math.floor(N/3));
+  const Gs=[];for(let g=1;g<=maxG;g++)Gs.push(g);
+  Gs.sort((a,b)=>((a%H===0||a>=H)?0:1)-((b%H===0||b>=H)?0:1)||a-b);
+  const tryOne=(Q,G,g)=>{
+    cfg.ko=Q===8?"QF":Q===4?"SF":Q===2?"F":"NONE";cfg.groups=G;
+    cfg.breakMin=Q?10:5;cfg.gameMin=g;cfg.koGameMin=g;cfg.finalMin=Math.min(g+2,15);
+    return buildRaw();
+  };
+  const fits=(Q,G)=>{const min=Math.floor(N/G);return !Q||(Q%G===0?Q/G<min:Q<=G*(min-1)+G);};
+  let best=null;
+  const maxFit=(Q,G,minG)=>{for(let g=15;g>=minG;g--){if(tryOne(Q,G,g).planEnd<=toMin(cfg.end))return g;}return 0;};
+  outer: for(const Q of Qs){
+    for(const minG of [7,6]){
+      for(const G of Gs){
+        if(!fits(Q,G))continue;
+        const g=maxFit(Q,G,minG);
+        if(g){best={Q,G,g};break outer;}
+      }
+    }
+  }
+  if(!best){for(const Q of Qs){for(const G of Gs){if(!fits(Q,G))continue;const g=maxFit(Q,G,5);if(g){best={Q,G,g};break;}}if(best)break;}}
+  if(!best){ // passt nicht: Variante mit dem frühesten Ende nehmen und warnen
+    let end=Infinity;
+    for(const Q of Qs.concat(Qs.includes(0)?[]:[0]))for(const G of Gs){if(!fits(Q,G))continue;const e=tryOne(Q,G,5).planEnd;if(e<end){end=e;best={Q,G,g:5,tooLong:e>toMin(cfg.end)};}}
+    if(!best)best={Q:0,G:1,g:5,tooLong:true};
+  }
+  autoInfo=best;
+  return tryOne(best.Q,best.G,best.g);
+}
+function build(){if(!cfg.auto&&cfg.koMode&&cfg.koMode!=="auto")cfg.ko=cfg.koMode;return cfg.auto?autoPlan():buildRaw();}
+function buildRaw(){
+  ensureTeams();
+  const N=cfg.teams.length;
+  const G=int(cfg.groups,2,1,Math.max(1,Math.floor(N/2)));
+  const H=int(cfg.halls,2,1,4);
+  const game=int(cfg.gameMin,8,1,60),chg=int(cfg.changeMin,2,0,30);
+  const groups=Array.from({length:G},(_,g)=>({name:LETTERS[g],idx:g,hall:g%H,teams:[]}));
+  cfg.teams.forEach((t,i)=>groups[i%G].teams.push(t.id));
+  const t0=toMin(cfg.start)+int(cfg.setupMin,20,0,120);
+  const matches=[];let groupEnd=t0;
+  const hallSlots=[];
+  for(let h=0;h<H;h++){
+    const gs=groups.filter(g=>g.hall===h);
+    const lists=gs.map(g=>roundRobin(g.teams).map(([a,b])=>({a,b,group:g.name})));
+    const merged=[];const mx=Math.max(0,...lists.map(l=>l.length));
+    for(let i=0;i<mx;i++)lists.forEach(l=>{if(l[i])merged.push(l[i])});
+    const ordered=spread(merged);
+    hallSlots[h]=ordered.length;
+    ordered.forEach((m,k)=>{
+      const [x,y]=[m.a,m.b].sort();
+      const st=t0+k*(game+chg);
+      matches.push({id:"g-"+x+"-"+y,kind:"G",group:m.group,hall:h,slot:k,a:m.a,b:m.b,start:st,dur:game});
+      groupEnd=Math.max(groupEnd,st+game);
+    });
+  }
+  // Finalrunde
+  const Qwant={QF:8,SF:4,F:2,NONE:0}[cfg.ko]??4;
+  let Q=Qwant;while(Q>N)Q/=2;if(Q<2)Q=0;
+  const seeds=[];const placesTaken=[];
+  if(Q){
+    let p=1;
+    while(seeds.length<Q&&p<=Math.max(...groups.map(g=>g.teams.length))){
+      const avail=groups.filter(g=>g.teams.length>=p);
+      if(seeds.length+avail.length<=Q){avail.forEach(g=>seeds.push({place:p,group:g.name}));}
+      else{const r=Q-seeds.length;for(let k=0;k<r;k++)seeds.push({place:p,best:k});}
+      p++;
+    }
+    if(seeds.length<Q)Q=seeds.length>=4?4:(seeds.length>=2?2:0);
+    seeds.length=Q;
+  }
+  const order={8:[[1,8],[4,5],[2,7],[3,6]],4:[[1,4],[2,3]],2:[[1,2]]}[Q]||[];
+  const pairs=order.map(([x,y])=>[x-1,y-1]);
+  // gleiche Gruppe in der ersten K.-o.-Runde vermeiden
+  const gOf=i=>seeds[i]&&seeds[i].group;
+  for(let i=0;i<pairs.length;i++){
+    const [x,y]=pairs[i];
+    if(gOf(x)&&gOf(x)===gOf(y)){
+      for(let j=0;j<pairs.length;j++){if(j===i)continue;
+        const [x2,y2]=pairs[j];
+        if(gOf(x)!==gOf(y2)&&gOf(x2)!==gOf(y)){pairs[i]=[x,y2];pairs[j]=[x2,y];break;}
+      }
+    }
+  }
+  const ko=[];
+  const koGame=int(cfg.koGameMin,8,1,60),fin=int(cfg.finalMin,10,1,60);
+  let t=Math.ceil((groupEnd+int(cfg.breakMin,10,0,120))/5)*5;
+  const koStart=t;
+  const add=(id,label,round,home,away,d)=>{ko.push({id,label,round,kind:"K",hall:0,home,away,start:t,dur:d});t+=d+chg;};
+  if(Q===8){
+    pairs.forEach((p,i)=>add("VF"+(i+1),"Viertelfinale "+(i+1),"VF",{seed:p[0]},{seed:p[1]},koGame));
+    add("HF1","Halbfinale 1","HF",{win:"VF1"},{win:"VF2"},koGame);
+    add("HF2","Halbfinale 2","HF",{win:"VF3"},{win:"VF4"},koGame);
+  }else if(Q===4){
+    pairs.forEach((p,i)=>add("HF"+(i+1),"Halbfinale "+(i+1),"HF",{seed:p[0]},{seed:p[1]},koGame));
+  }
+  if(Q>=4&&cfg.third)add("P3","Spiel um Platz 3","P3",{lose:"HF1"},{lose:"HF2"},koGame);
+  if(Q>=4)add("F","Finale","F",{win:"HF1"},{win:"HF2"},fin);
+  else if(Q===2)add("F","Finale","F",{seed:pairs[0][0]},{seed:pairs[0][1]},fin);
+  const koEnd=ko.length?t-chg:groupEnd;
+  const awardStart=Math.ceil((koEnd+5)/5)*5;
+  const award=int(cfg.awardMin,10,0,60),clean=int(cfg.cleanupMin,20,0,90);
+  const cleanStart=awardStart+award,planEnd=cleanStart+clean;
+  return {N,G,H,Q,Qwant,groups,matches,ko,seeds,t0,groupEnd,koStart,koEnd,awardStart,cleanStart,planEnd,game,chg,hallSlots};
+}
+
+/* ---------- Tabellen und Auflösung ---------- */
+function res(id){const r=results[id];if(!r)return null;const h=num(r.h),a=num(r.a);if(h==null||a==null)return null;return {h,a,ph:num(r.ph),pa:num(r.pa)};}
+function tableOf(P,g){
+  const rows={};g.teams.forEach(id=>rows[id]={id,sp:0,s:0,u:0,n:0,tf:0,tg:0,pts:0});
+  const ms=P.matches.filter(m=>m.group===g.name);let played=0;
+  ms.forEach(m=>{const r=res(m.id);if(!r)return;played++;
+    const A=rows[m.a],B=rows[m.b];const ga=r.h,gb=r.a;
+    A.sp++;B.sp++;A.tf+=ga;A.tg+=gb;B.tf+=gb;B.tg+=ga;
+    if(ga>gb){A.s++;B.n++;A.pts+=3}else if(ga<gb){B.s++;A.n++;B.pts+=3}else{A.u++;B.u++;A.pts++;B.pts++}
+  });
+  const h2h=(x,y)=>{const m=ms.find(m=>(m.a===x&&m.b===y)||(m.a===y&&m.b===x));const r=m&&res(m.id);if(!r)return 0;const gx=m.a===x?r.h:r.a,gy=m.a===x?r.a:r.h;return gy-gx;};
+  const list=Object.values(rows).sort((x,y)=>(y.pts-x.pts)||((y.tf-y.tg)-(x.tf-x.tg))||(y.tf-x.tf)||h2h(x.id,y.id)||teamName(x.id).localeCompare(teamName(y.id),"de"));
+  return {rows:list,complete:played===ms.length&&ms.length>0,played,total:ms.length};
+}
+function seedLabel(P,s){
+  if(!s)return "?";
+  if(s.group)return s.place+". Gruppe "+s.group;
+  return (s.best===0?"Bester ":(s.best+1)+".-bester ")+s.place+".";
+}
+function resolveSeed(P,tabs,s){
+  if(!s)return null;
+  if(s.group){const tb=tabs[s.group];return tb&&tb.complete?tb.rows[s.place-1]?.id??null:null;}
+  if(!Object.values(tabs).every(t=>t.complete))return null;
+  const cands=P.groups.filter(g=>g.teams.length>=s.place).map(g=>tabs[g.name].rows[s.place-1]).filter(Boolean)
+    .filter(r=>!P.seeds.some(o=>o.group&&o.place===s.place&&tabs[o.group].rows[s.place-1]===r));
+  const q=r=>r.sp||1;
+  cands.sort((x,y)=>(y.pts/q(y)-x.pts/q(x))||((y.tf-y.tg)/q(y)-(x.tf-x.tg)/q(x))||(y.tf/q(y)-x.tf/q(x)));
+  return cands[s.best]?.id??null;
+}
+function koWinner(m,home,away){
+  const r=res(m.id);if(!r||!home||!away)return null;
+  if(r.h>r.a)return {w:home,l:away};if(r.a>r.h)return {w:away,l:home};
+  if(r.ph!=null&&r.pa!=null&&r.ph!==r.pa)return r.ph>r.pa?{w:home,l:away}:{w:away,l:home};
+  return null;
+}
+function solve(P){
+  const tabs={};P.groups.forEach(g=>tabs[g.name]=tableOf(P,g));
+  const seedIds=P.seeds.map(s=>resolveSeed(P,tabs,s));
+  const out={};
+  const ref=r=>{
+    if(r.seed!=null){const sd=P.seeds[r.seed];let lbl=seedLabel(P,sd);
+      if(!seedIds[r.seed]&&sd&&sd.group){const tb=tabs[sd.group];if(tb&&tb.played>0&&tb.rows[sd.place-1])lbl+=" (aktuell "+teamName(tb.rows[sd.place-1].id)+")";}
+      return {id:seedIds[r.seed],label:lbl};}
+    const o=out[r.win||r.lose];const lbl=(r.win?"Sieger ":"Verlierer ")+labelShort(r.win||r.lose);
+    if(!o||!o.result)return {id:null,label:lbl};
+    return {id:r.win?o.result.w:o.result.l,label:lbl};
+  };
+  P.ko.forEach(m=>{const H=ref(m.home),A=ref(m.away);out[m.id]={home:H,away:A,result:koWinner(m,H.id,A.id)};});
+  return {tabs,ko:out};
+}
+const labelShort=id=>id.replace(/^VF/,"VF ").replace(/^HF/,"HF ");
+
+/* ---------- Speichern ---------- */
+const LS="turnierplaner-v1";
+function saveLocal(){try{localStorage.setItem(LS,JSON.stringify({cfg,results}))}catch(e){}}
+function loadLocal(){try{const d=JSON.parse(localStorage.getItem(LS)||"null");if(d){cfg=Object.assign(JSON.parse(JSON.stringify(DEF)),d.cfg||{});results=d.results||{};}}catch(e){}}
+let cfgTimer=null,cfgWriting=false,cfgAgain=false,cfgDirty=false;
+function saveCfg(){
+  if(store!=="db"){saveLocal();return;}
+  cfgDirty=true;clearTimeout(cfgTimer);cfgTimer=setTimeout(writeCfg,700);
+}
+async function writeCfg(){
+  if(cfgWriting){cfgAgain=true;return;}
+  cfgWriting=true;
+  try{await db.doc("turnier/config").set(JSON.parse(JSON.stringify(cfg)));setSave("ok");}
+  catch(e){setSave("err");}
+  cfgWriting=false;
+  if(cfgAgain){cfgAgain=false;writeCfg();}else cfgDirty=false;
+}
+const resWriting={};
+async function saveResult(id){
+  if(store!=="db"){saveLocal();return;}
+  if(resWriting[id]){resWriting[id]="again";return;}
+  resWriting[id]=true;
+  try{
+    const r=results[id];
+    if(!r||(r.h===""&&r.a===""&&(r.ph??"")===""&&(r.pa??"")===""))await db.doc("results/"+id).delete();
+    else await db.doc("results/"+id).set(r);
+    setSave("ok");
+  }catch(e){setSave("err");}
+  const again=resWriting[id]==="again";resWriting[id]=false;
+  if(again)saveResult(id);
+}
+let saveState="";
+function setSave(s){saveState=s;renderChips();}
+
+/* ---------- Rendern ---------- */
+const TABS=[["plan","Spielplan"],["tabellen","Tabellen"],["finalrunde","Finalrunde"],["teams","Mannschaften"],["setup","Einstellungen"]];
+let P=null,S=null;
+function render(){
+  const f=document.activeElement;let keep=null;
+  if(f&&f.id&&(f.tagName==="INPUT"||f.tagName==="SELECT")){keep={id:f.id,v:f.value,type:f.type};try{keep.s=f.selectionStart;keep.e=f.selectionEnd}catch(e){}}
+  P=build();S=solve(P);
+  document.getElementById("hdrTitle").textContent=cfg.title||"Fußballturnier";
+  const d=cfg.date?new Date(cfg.date+"T12:00:00"):null;
+  document.getElementById("hdrDate").textContent=(d&&!isNaN(d)?d.toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long",year:"numeric"}):"")+" · "+cfg.start+"–"+cfg.end+" Uhr";
+  renderChips();renderNext();renderTabs();
+  const v=document.getElementById("view");
+  v.innerHTML=({plan:viewPlan,tabellen:viewTables,finalrunde:viewKo,teams:viewTeams,setup:viewSetup}[tab]||viewPlan)();
+  if(keep){const el=document.getElementById(keep.id);if(el){if(keep.type!=="checkbox")el.value=keep.v;el.focus({preventScroll:true});try{if(keep.s!=null)el.setSelectionRange(keep.s,keep.e)}catch(e){}}}
+}
+function renderChips(){
+  if(!P)return;
+  const end=toMin(cfg.end),diff=end-P.planEnd;
+  const c=[];
+  c.push(`<span class="chip">${P.N} Mannschaften · ${P.G} ${P.G===1?"Gruppe":"Gruppen"} · ${P.H} ${P.H===1?"Halle":"Hallen"}</span>`);
+  c.push(diff>=0?`<span class="chip">Ende ${fmt(P.planEnd)} · ${diff} Min. Puffer</span>`:`<span class="chip bad">Ende ${fmt(P.planEnd)} · ${-diff} Min. zu lang</span>`);
+  const st={loading:["warn","Verbindet …"],db:["","Gemeinsam gespeichert"],local:["warn","Nur auf diesem Gerät gespeichert"],offline:["warn","Speicher nicht erreichbar"]}[store];
+  let txt=st[1];let cls=st[0];
+  if(store==="db"&&saveState==="err"){txt="Speichern fehlgeschlagen";cls="bad";}
+  c.push(`<span class="chip ${cls}">${txt}</span>`);
+  document.getElementById("chips").innerHTML=c.join("");
+}
+function teamsOf(m){
+  if(m.kind==="G")return {h:{id:m.a,label:teamName(m.a)},a:{id:m.b,label:teamName(m.b)}};
+  const k=S.ko[m.id];
+  return {h:{id:k.home.id,label:k.home.id?teamName(k.home.id):k.home.label},a:{id:k.away.id,label:k.away.id?teamName(k.away.id):k.away.label}};
+}
+function renderNext(){
+  const all=[...P.matches,...P.ko];
+  const cards=[];
+  const halls=new Set(all.map(m=>m.hall));
+  [...halls].sort().forEach(h=>{
+    const list=all.filter(m=>m.hall===h&&!res(m.id)||m.hall===h&&m.kind==="K"&&!S.ko[m.id].result).sort((x,y)=>x.start-y.start);
+    const m=list[0];
+    if(!m){cards.push(`<div><div class="lbl">Halle ${h+1}</div><div class="m">Alle Spiele gespielt</div></div>`);return;}
+    const t=teamsOf(m);const n2=list[1];
+    let after="";if(n2){const t2=teamsOf(n2);after=`<div class="muted small">Danach ${fmt(n2.start)}: ${esc(t2.h.label)} – ${esc(t2.a.label)}</div>`;}
+    cards.push(`<div><div class="lbl">Halle ${h+1} · als nächstes ${fmt(m.start)} · ${m.kind==="G"?"Gruppe "+m.group:esc(m.label)}</div><div class="m">${esc(t.h.label)} – ${esc(t.a.label)}</div>${after}</div>`);
+  });
+  document.getElementById("next").innerHTML=cards.join("");
+}
+function renderTabs(){
+  document.getElementById("tabs").innerHTML=TABS.map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${tab===k}">${l}</button>`).join("");
+}
+function scoreInputs(m,disabled){
+  const r=results[m.id]||{};
+  return `<div class="score"><input id="s-${m.id}-h" data-mid="${m.id}" data-f="h" inputmode="numeric" type="number" min="0" max="99" value="${esc(r.h??"")}" aria-label="Tore Heim" ${disabled?"disabled":""}><b>:</b><input id="s-${m.id}-a" data-mid="${m.id}" data-f="a" inputmode="numeric" type="number" min="0" max="99" value="${esc(r.a??"")}" aria-label="Tore Gast" ${disabled?"disabled":""}></div>`;
+}
+function matchCard(m,showHall){
+  const t=teamsOf(m);const r=res(m.id);
+  let win=null;
+  if(m.kind==="G"&&r){win=r.h>r.a?"h":r.a>r.h?"a":null}
+  if(m.kind==="K"){const k=S.ko[m.id];if(k.result)win=k.result.w===t.h.id?"h":"a";}
+  const ready=m.kind==="G"||(t.h.id&&t.a.id);
+  let pen="";
+  if(m.kind==="K"&&r&&r.h===r.a){const rr=results[m.id]||{};pen=`<div class="pen">Siebenmeter <input id="p-${m.id}-h" data-mid="${m.id}" data-f="ph" type="number" inputmode="numeric" min="0" value="${esc(rr.ph??"")}" aria-label="Siebenmeter Heim"> : <input id="p-${m.id}-a" data-mid="${m.id}" data-f="pa" type="number" inputmode="numeric" min="0" value="${esc(rr.pa??"")}" aria-label="Siebenmeter Gast"></div>`;}
+  const done=m.kind==="G"?!!r:!!S.ko[m.id].result;
+  const cls=(cl,side)=>"t"+(cl?" r":"")+(win===side?" win":"")+(!(side==="h"?t.h.id:t.a.id)?" open":"");
+  return `<div class="match${m.kind==="K"?" ko":""}${done?" done":""}" ${showHall?`data-hall="Halle ${m.hall+1}"`:""}>
+    <div class="meta"><span>${m.kind==="G"?"Gruppe "+m.group:`<span class="tag">${esc(m.label)}</span>`}</span><span>${fmt(m.start)}–${fmt(m.start+m.dur)}</span></div>
+    <div class="line"><span class="${cls(true,"h")}">${esc(t.h.label)}</span>${scoreInputs(m,!ready)}<span class="${cls(false,"a")}">${esc(t.a.label)}</span></div>${pen}</div>`;
+}
+function isNow(start,dur){
+  const now=new Date();const today=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-"+String(now.getDate()).padStart(2,"0");
+  if(today!==cfg.date)return false;const m=now.getHours()*60+now.getMinutes();return m>=start&&m<start+dur+P.chg;
+}
+function viewPlan(){
+  const H=P.H;const out=[];
+  out.push(`<div class="plan" style="--halls:${H}">`);
+  out.push(`<div class="row head"><span>Zeit</span>${Array.from({length:H},(_,h)=>`<span>Halle ${h+1}${P.groups.filter(g=>g.hall===h).length?" · Gruppe "+P.groups.filter(g=>g.hall===h).map(g=>g.name).join(", "):""}</span>`).join("")}</div>`);
+  out.push(`<div class="sep"><span class="time">${cfg.start}</span><span>Ankommen, Umziehen, Aufbau, Begrüßung und Regeln</span></div>`);
+  const slots=Math.max(0,...P.hallSlots);
+  for(let k=0;k<slots;k++){
+    const st=P.t0+k*(P.game+P.chg);
+    const cells=[];for(let h=0;h<H;h++){const m=P.matches.find(x=>x.hall===h&&x.slot===k);cells.push(m?matchCard(m,true):`<div class="empty-hall"></div>`);}
+    out.push(`<div class="row${isNow(st,P.game)?" now":""}"><span class="time">${fmt(st)}</span>${cells.join("")}</div>`);
+  }
+  if(P.ko.length){
+    out.push(`<div class="sep"><span class="time">${fmt(P.groupEnd)}</span><span>Vorrunde vorbei. Tabellen prüfen, Finalrunde ausrufen${H>1?", Ausgeschiedene räumen Halle 2"+(H>2?" bis "+H:"")+" auf":""}</span></div>`);
+    P.ko.forEach(m=>{out.push(`<div class="row${isNow(m.start,m.dur)?" now":""}"><span class="time">${fmt(m.start)}</span>${matchCard(m,true)}${H>1?`<div class="empty-hall" style="grid-column:span ${H-1}"></div>`:""}</div>`);});
+  }
+  out.push(`<div class="sep"><span class="time">${fmt(P.awardStart)}</span><span>Siegerehrung</span></div>`);
+  out.push(`<div class="sep"><span class="time">${fmt(P.cleanStart)}</span><span>Halle aufräumen, alle helfen mit. Fertig um ${fmt(P.planEnd)}</span></div>`);
+  out.push(`</div>`);
+  const tip=`<p class="muted small">Ergebnis eintragen, das Feld verlassen, fertig. Tabellen und Finalrunde rechnen sich automatisch. Steht ein K.-o.-Spiel unentschieden, erscheinen die Felder für das Siebenmeterschießen.</p>`;
+  return `<div class="stack">${warnBox()}${tip}${out.join("")}</div>`;
+}
+function warnBox(){
+  const w=[];const diff=toMin(cfg.end)-P.planEnd;
+  if(diff<0)w.push(`Der Plan endet um ${fmt(P.planEnd)} und damit ${-diff} Minuten nach ${cfg.end}. Kürzere Spielzeit, weniger Wechselzeit oder Finalrunde erst ab Halbfinale helfen.`);
+  if(P.Qwant&&P.Q!==P.Qwant)w.push(`Für die gewählte Finalrunde gibt es zu wenige Mannschaften, der Plan startet deshalb direkt mit ${P.Q===4?"dem Halbfinale":P.Q===2?"dem Finale":"keiner Finalrunde"}.`);
+  return w.map(x=>`<div class="note warn">${esc(x)}</div>`).join("");
+}
+function viewTables(){
+  const q=new Set();P.seeds.forEach(s=>{if(s.group)q.add(s.group+"|"+s.place)});
+  const qPlaces=Math.max(0,...P.seeds.filter(s=>s.group).map(s=>s.place));
+  const cards=P.groups.map(g=>{
+    const tb=S.tabs[g.name];
+    const rows=tb.rows.map((r,i)=>`<tr class="${q.has(g.name+"|"+(i+1))?"q":""}"><td>${i+1}</td><td>${esc(teamName(r.id))}</td><td class="n">${r.sp}</td><td class="n">${r.s}</td><td class="n">${r.u}</td><td class="n">${r.n}</td><td class="n">${r.tf}:${r.tg}</td><td class="n">${r.tf-r.tg>0?"+":""}${r.tf-r.tg}</td><td class="n"><b>${r.pts}</b></td></tr>`).join("");
+    return `<div class="card stack"><div class="btns" style="justify-content:space-between"><h3>Gruppe ${g.name} · Halle ${g.hall+1}</h3><span class="muted small">${tb.played} von ${tb.total} Spielen</span></div><div class="scroll"><table><thead><tr><th>Pl.</th><th>Mannschaft</th><th class="n">Sp</th><th class="n">S</th><th class="n">U</th><th class="n">N</th><th class="n">Tore</th><th class="n">Diff</th><th class="n">Pkt</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  }).join("");
+  const best=P.seeds.filter(s=>!s.group);
+  const bestNote=best.length?`<p class="muted small">Zusätzlich kommen ${best.length===1?"der beste":"die "+best.length+" besten"} ${best[0].place}. aller Gruppen weiter, verglichen nach Punkten, Tordifferenz und Toren pro Spiel.</p>`:"";
+  return `<div class="stack"><div class="card"><ul class="rules small"><li>Sieg 3 Punkte, Unentschieden 1 Punkt.</li><li>Bei Punktgleichheit zählt die Tordifferenz, dann die Zahl der Tore, dann der direkte Vergleich.</li><li>Grün markiert: kommt weiter in die Finalrunde${qPlaces?" (Platz 1"+(qPlaces>1?"–"+qPlaces:"")+")":""}.</li></ul></div>${bestNote}<div class="grid2">${cards}</div></div>`;
+}
+function viewKo(){
+  if(!P.ko.length)return `<div class="note">Es ist keine Finalrunde eingestellt. Unter Einstellungen kannst du sie einschalten.</div>`;
+  const rounds=[["VF","Viertelfinale"],["HF","Halbfinale"],["F","Finale"]].filter(([r])=>P.ko.some(m=>m.round===r));
+  const cols=rounds.map(([r,l])=>`<div class="col"><h3>${l}</h3>${P.ko.filter(m=>m.round===r).map(m=>matchCard(m,false)).join("")}</div>`).join("");
+  const p3=P.ko.find(m=>m.round==="P3");
+  const f=S.ko.F,third=p3?S.ko.P3:null;
+  let pod="";
+  if(f&&f.result){
+    pod=`<div class="card stack"><h2>Siegerehrung</h2><div class="podium"><div><span class="muted small">1. Platz</span><b>${esc(teamName(f.result.w))}</b></div><div><span class="muted small">2. Platz</span><b>${esc(teamName(f.result.l))}</b></div>${third&&third.result?`<div><span class="muted small">3. Platz</span><b>${esc(teamName(third.result.w))}</b></div>`:""}</div></div>`;
+  }
+  return `<div class="stack">${pod}<p class="muted small">Alle Spiele der Finalrunde laufen in Halle 1. Die Paarungen füllen sich, sobald eine Gruppe fertig gespielt ist und Sieger feststehen. Unentschieden: sofort Siebenmeterschießen mit je 3 Schützen, danach im Wechsel bis zur Entscheidung.</p><div class="bracket">${cols}</div>${p3?`<div style="max-width:360px">${matchCard(p3,false)}</div>`:""}</div>`;
+}
+function viewTeams(){
+  const gOf={};P.groups.forEach(g=>g.teams.forEach(id=>gOf[id]=g.name));
+  const pf=int(cfg.playersField,5,1,cfg.playersTotal);
+  const cards=cfg.teams.map((t,i)=>`<div class="card team">
+    <div class="hd"><span class="g">Gruppe ${gOf[t.id]||"?"}</span><span class="muted small">Nr. ${i+1}</span></div>
+    <label class="f">Teamname<input type="text" id="t-${t.id}-name" data-team="${t.id}" data-k="name" value="${esc(t.name)}"></label>
+    <div class="form" style="grid-template-columns:1fr 1fr"><label class="f">Klasse<input type="text" id="t-${t.id}-klasse" data-team="${t.id}" data-k="klasse" value="${esc(t.klasse)}"></label><label class="f">Kapitän/in<input type="text" id="t-${t.id}-captain" data-team="${t.id}" data-k="captain" value="${esc(t.captain)}"></label></div>
+    <div class="players">${t.players.slice(0,cfg.playersTotal).map((p,j)=>`<div class="pl${j>=pf?" sub":""}"><span>${j<pf?"Feld "+(j+1):"Wechsel "+(j-pf+1)}</span><input type="text" id="t-${t.id}-p${j}" data-team="${t.id}" data-k="p${j}" value="${esc(p)}" aria-label="Spieler ${j+1}"></div>`).join("")}</div>
+  </div>`).join("");
+  const hasRes=Object.keys(results).length>0;
+  return `<div class="stack"><div class="card stack"><p>Die Mannschaften werden der Reihe nach auf die Gruppen verteilt (1 → A, 2 → B, 3 → A …). Pro Team ${cfg.playersTotal} Spieler/innen, davon ${pf} auf dem Feld und ${cfg.playersTotal-pf} zum Wechseln.</p>
+  <div class="btns"><button class="b sec" data-act="draw" ${hasRes&&!confirmDraw?"":""}>${confirmDraw?"Wirklich neu auslosen? Bisherige Gruppenergebnisse passen dann nicht mehr":"Gruppen auslosen"}</button>${confirmDraw?`<button class="b danger" data-act="draw-yes">Ja, neu auslosen</button><button class="b sec" data-act="draw-no">Abbrechen</button>`:""}</div></div>
+  <div class="teams">${cards}</div></div>`;
+}
+function viewSetup(){
+  const AUTO=new Set(["groups","setupMin","gameMin","changeMin","breakMin","koGameMin","finalMin","awardMin","cleanupMin"]);
+  const n=(k,l,lo,hi,suf)=>{const dis=cfg.auto&&AUTO.has(k);return `<label class="f">${l}<input type="number" id="c-${k}" data-cfg="${k}" min="${lo}" max="${hi}" value="${esc(cfg[k])}" ${dis?"disabled":""}>${dis?`<span class="muted small" style="font-weight:400">automatisch</span>`:suf?`<span class="muted small" style="font-weight:400">${suf}</span>`:""}</label>`;};
+  const koName={QF:"Viertelfinale",SF:"Halbfinale",F:"Finale",NONE:"keine Finalrunde"};
+  const autoTxt=cfg.auto&&autoInfo?`<div class="note">${autoInfo.tooLong?"<b>Achtung:</b> Selbst mit 5 Minuten Spielzeit reicht die Zeit nicht ganz. Mehr Zeit, eine zusätzliche Halle oder weniger Teams helfen. ":""}Automatisch berechnet: ${P.G} ${P.G===1?"Gruppe":"Gruppen"} (${P.groups.map(g=>g.teams.length).join(", ")} Teams), ${cfg.gameMin} Min. Spielzeit, ${cfg.ko!=="NONE"?"Finale "+cfg.finalMin+" Min., ":""}${cfg.ko==="NONE"?"ohne Finalrunde, die Vorrunde entscheidet":"Finalrunde ab "+koName[cfg.ko]}. Jedes Team spielt in der Vorrunde ${Math.min(...P.groups.map(g=>g.teams.length))-1}${Math.min(...P.groups.map(g=>g.teams.length))!==Math.max(...P.groups.map(g=>g.teams.length))?"–"+(Math.max(...P.groups.map(g=>g.teams.length))-1):""} Mal. Ende ${fmt(P.planEnd)} Uhr.</div>`:"";
+  const maxG=Math.max(1,Math.floor(cfg.numTeams/2));
+  return `<div class="stack">${warnBox()}
+  <div class="card stack"><h2>Automatische Planung</h2>
+    <label class="f chk" style="padding-top:0"><input type="checkbox" id="c-auto" data-cfg="auto" ${cfg.auto?"checked":""}> Alles aus Teamzahl und Zeitfenster berechnen</label>
+    <p class="muted small">Eingeben musst du nur Beginn, Ende, Anzahl Mannschaften und Hallen. Gruppen, Spielzeiten, Aufbau, Pausen, Siegerehrung und Aufräumen werden so gewählt, dass alles bis zum Ende passt. Zum Feinjustieren den Haken entfernen, dann sind alle Werte frei änderbar.</p>
+    ${autoTxt}</div>
+  <div class="card stack"><h2>Turnier</h2><div class="form">
+    <label class="f">Name<input type="text" id="c-title" data-cfg="title" value="${esc(cfg.title)}"></label>
+    <label class="f">Datum<input type="date" id="c-date" data-cfg="date" value="${esc(cfg.date)}"></label>
+    <label class="f">Beginn<input type="time" id="c-start" data-cfg="start" value="${esc(cfg.start)}"></label>
+    <label class="f">Ende inkl. Aufräumen<input type="time" id="c-end" data-cfg="end" value="${esc(cfg.end)}"></label>
+  </div></div>
+  <div class="card stack"><h2>Mannschaften und Gruppen</h2><div class="form">
+    ${n("numTeams","Anzahl Mannschaften",2,32)}
+    ${n("groups","Anzahl Gruppen",1,maxG,`höchstens ${maxG}`)}
+    ${n("halls","Hallen in der Vorrunde",1,4)}
+    ${n("playersTotal","Spieler/innen pro Team",1,20)}
+    ${n("playersField","davon auf dem Feld",1,20)}
+  </div><p class="muted small">Aktuell: ${P.groups.map(g=>`Gruppe ${g.name} mit ${g.teams.length} Teams in Halle ${g.hall+1}`).join(", ")}.</p></div>
+  <div class="card stack"><h2>Zeiten in Minuten</h2><div class="form">
+    ${n("setupMin","Aufbau und Begrüßung",0,120)}
+    ${n("gameMin","Spielzeit Vorrunde",1,60)}
+    ${n("changeMin","Wechselzeit zwischen Spielen",0,30)}
+    ${n("breakMin","Pause nach der Vorrunde",0,120)}
+    ${n("koGameMin","Spielzeit Finalrunde",1,60)}
+    ${n("finalMin","Spielzeit Finale",1,60)}
+    ${n("awardMin","Siegerehrung",0,60)}
+    ${n("cleanupMin","Aufräumen",0,90)}
+  </div></div>
+  <div class="card stack"><h2>Finalrunde</h2><div class="form">
+    <label class="f">Finalrunde ab<select id="c-koMode" data-cfg="koMode">
+      ${[["auto","Automatisch"],["QF","Viertelfinale (8 Teams weiter)"],["SF","Halbfinale (4 Teams weiter)"],["F","Finale (2 Teams weiter)"],["NONE","Keine Finalrunde"]].map(([v,l])=>`<option value="${v}" ${(cfg.koMode||"auto")===v?"selected":""}>${l}</option>`).join("")}
+    </select></label>
+    <label class="f chk"><input type="checkbox" id="c-third" data-cfg="third" ${cfg.third?"checked":""}> Spiel um Platz 3</label>
+  </div></div>
+  <div class="card stack"><h2>Daten übertragen</h2>
+    <p class="muted small">Zum Beispiel vom Schul-PC auf das iPad: Hier exportieren, die Datei per Mail, Cloud oder USB-Stick weitergeben und auf dem anderen Gerät importieren. Übertragen werden Mannschaften, Einstellungen und Ergebnisse. Beim Import wird der Stand auf diesem Gerät ersetzt.</p>
+    <div class="btns"><button class="b" data-act="export">Daten exportieren</button><label class="b sec" style="display:inline-block;cursor:pointer;border:1px solid var(--pitch);border-radius:6px;padding:8px 14px;font-weight:600;color:var(--pitch)">Datei importieren<input type="file" id="importFile" accept=".json,application/json,text/plain" style="display:none"></label></div>
+    <p class="small" id="xferMsg" hidden></p></div>
+  <div class="card stack"><h2>Ergebnisse</h2><p class="muted small">Löscht alle eingetragenen Ergebnisse. Mannschaften und Einstellungen bleiben.</p>
+    <div class="btns">${confirmReset?`<span>Alle Ergebnisse löschen?</span><button class="b danger" data-act="reset-yes">Ja, löschen</button><button class="b sec" data-act="reset-no">Abbrechen</button>`:`<button class="b danger" data-act="reset">Alle Ergebnisse löschen</button>`}</div></div>
+  </div>`;
+}
+
+/* ---------- Aushang zum Drucken ---------- */
+const dlP=(window.claude&&window.claude.use)?window.claude.use("downloads").catch(()=>null):Promise.resolve(null);
+function printHTML(){
+  const P=build(),S=solve(P);
+  const sc=id=>{const r=res(id);if(!r)return '<span class="bx"></span> : <span class="bx"></span>';let t=r.h+" : "+r.a;if(r.ph!=null&&r.pa!=null&&r.h===r.a)t+=" ("+r.ph+":"+r.pa+" n. 7m)";return "<b>"+t+"</b>";};
+  const nm=x=>esc(x.id?teamName(x.id):x.label);
+  const d=cfg.date?new Date(cfg.date+"T12:00:00"):null;
+  const dateTxt=d&&!isNaN(d)?d.toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long",year:"numeric"}):"";
+  const slots=Math.max(0,...P.hallSlots);
+  let rows="";
+  for(let k=0;k<slots;k++){
+    const st=P.t0+k*(P.game+P.chg);
+    rows+=`<tr><td class="tm">${fmt(st)}</td>`;
+    for(let h=0;h<P.H;h++){const m=P.matches.find(x=>x.hall===h&&x.slot===k);
+      rows+=m?`<td class="gr">${m.group}</td><td>${esc(teamName(m.a))} – ${esc(teamName(m.b))}</td><td class="sc">${sc(m.id)}</td>`:`<td></td><td></td><td></td>`;}
+    rows+=`</tr>`;
+  }
+  const hallHead=Array.from({length:P.H},(_,h)=>`<th colspan="3">Halle ${h+1} · Gruppe ${P.groups.filter(g=>g.hall===h).map(g=>g.name).join(", ")||"–"}</th>`).join("");
+  const groups=P.groups.map(g=>`<div class="grp"><h3>Gruppe ${g.name} <small>Halle ${g.hall+1}</small></h3><ol>${g.teams.map(id=>{const t=cfg.teams.find(x=>x.id===id);return `<li>${esc(teamName(id))}${t&&t.klasse?` <small>(${esc(t.klasse)})</small>`:""}</li>`}).join("")}</ol></div>`).join("");
+  const ko=P.ko.map(m=>{const k=S.ko[m.id];return `<tr><td class="tm">${fmt(m.start)}</td><td><b>${esc(m.label)}</b></td><td>${nm(k.home)} – ${nm(k.away)}</td><td class="sc">${sc(m.id)}</td></tr>`}).join("");
+  const tables=P.groups.map(g=>{const tb=S.tabs[g.name];const any=tb.played>0;
+    return `<div class="grp"><h3>Gruppe ${g.name}</h3><table class="tb"><tr><th>Pl.</th><th>Mannschaft</th><th>Sp</th><th>Tore</th><th>Pkt</th></tr>${tb.rows.map((r,i)=>`<tr><td>${i+1}</td><td>${any?esc(teamName(r.id)):""}</td><td>${any?r.sp:""}</td><td>${any?r.tf+":"+r.tg:""}</td><td>${any?r.pts:""}</td></tr>`).join("")}</table></div>`}).join("");
+  const koName={QF:"Viertelfinale",SF:"Halbfinale",F:"Finale"};
+  return `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Spielplan ${esc(cfg.title)}</title>
+<style>
+@page{size:A4 landscape;margin:10mm}
+*{box-sizing:border-box}
+body{font-family:Arial,Helvetica,sans-serif;color:#000;margin:0;font-size:11pt}
+.page{page-break-after:always;padding:4mm}
+.page:last-child{page-break-after:auto}
+h1{font-size:22pt;margin:0 0 1mm}
+thead{display:table-header-group}
+tr{break-inside:avoid}
+body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+h2{font-size:13pt;margin:3mm 0 1.5mm;border-bottom:2px solid #1d7444;padding-bottom:1mm}
+h3{font-size:12pt;margin:0 0 1mm}
+small{font-weight:normal;color:#444}
+.sub{font-size:12pt;margin-bottom:3mm}
+.flow{display:flex;flex-wrap:wrap;gap:2mm 6mm;font-size:10pt;background:#e6f1ea;padding:2mm 3mm;border-radius:2mm}
+.groups{display:grid;grid-template-columns:repeat(${Math.min(P.G,4)},1fr);gap:4mm}
+.grp ol{margin:0;padding-left:6mm;columns:2;column-gap:6mm;font-size:10pt}
+table{border-collapse:collapse;width:100%}
+th,td{border:1px solid #888;padding:1mm 2mm;text-align:left;vertical-align:middle}
+th{background:#e6f1ea;font-size:10pt}
+.tm{font-weight:bold;white-space:nowrap;width:16mm}
+.gr{text-align:center;width:8mm;font-weight:bold}
+.sc{white-space:nowrap;text-align:center;width:30mm}
+.bx{display:inline-block;width:9mm;height:5mm;border:1px solid #444;vertical-align:middle}
+.tb td,.tb th{padding:1mm 2mm}
+.rules{font-size:10pt;margin:0;padding-left:5mm}
+.noprint{margin:10px 0;padding:10px;background:#fff4d6;font-size:12pt}
+@media print{.noprint{display:none}}
+</style></head><body>
+<div class="noprint">Der Druckdialog sollte sich gleich öffnen. Falls nicht: Strg+P drücken. Querformat ist schon eingestellt.</div>
+<div class="page">
+<h1>${esc(cfg.title)}</h1>
+<div class="sub">${dateTxt} · ${esc(cfg.start)}–${esc(cfg.end)} Uhr · ${P.N} Mannschaften</div>
+<div class="flow"><span><b>${cfg.start}</b> Aufbau und Begrüßung</span><span><b>${fmt(P.t0)}</b> Vorrunde</span>${P.ko.length?`<span><b>${fmt(P.koStart)}</b> ${koName[cfg.ko]||"Finalrunde"} in Halle 1</span>`:""}<span><b>${fmt(P.awardStart)}</b> Siegerehrung</span><span><b>${fmt(P.cleanStart)}</b> Aufräumen</span><span>Spielzeit ${P.game} Min.${P.ko.length?`, Finale ${cfg.finalMin} Min.`:""}</span></div>
+<h2>Gruppen</h2><div class="groups">${groups}</div>
+<h2>Vorrunde</h2>
+<table><thead><tr><th>Zeit</th>${hallHead}</tr></thead><tbody>${rows}</tbody></table>
+</div>
+<div class="page">
+${P.ko.length?`<h2>Finalrunde · Halle 1</h2><table><tr><th>Zeit</th><th>Spiel</th><th>Paarung</th><th>Ergebnis</th></tr>${ko}</table>`:""}
+<h2>Tabellen</h2><div class="groups">${tables}</div>
+<h2>Regeln</h2>
+<ul class="rules"><li>Sieg 3 Punkte, Unentschieden 1 Punkt. Bei Punktgleichheit zählen Tordifferenz, geschossene Tore, dann der direkte Vergleich.</li>
+<li>${cfg.playersTotal} Spieler/innen pro Team, davon ${cfg.playersField} auf dem Feld, fliegender Wechsel.</li>
+${P.ko.length?`<li>Unentschieden in der Finalrunde: sofort Siebenmeterschießen mit je 3 Schützen, danach im Wechsel bis zur Entscheidung.</li>`:""}
+<li>Die nächste Mannschaft steht bei Abpfiff bereit.</li></ul>
+</div>
+<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},400)});<\/script>
+</body></html>`;
+}
+function printMsg(t){const el=document.getElementById("printMsg");el.textContent=t||"";el.hidden=!t;}
+async function doPrint(){
+  const html=printHTML();
+  const fname="Spielplan_Aushang_"+(cfg.date||"Turnier")+".html";
+  printMsg("Aushang wird erstellt …");
+  const dl=await dlP;
+  if(dl){
+    try{await dl.save({filename:fname,data:html});printMsg("Gespeichert. Datei öffnen, dann startet der Druckdialog von selbst (A4 quer).");}
+    catch(e){printMsg(e&&e.code==="declined"?"":"Speichern hat nicht geklappt. Bitte noch einmal versuchen.");}
+    return;
+  }
+  try{
+    const url=URL.createObjectURL(new Blob([html],{type:"text/html"}));
+    const w=window.open(url,"_blank");
+    if(w){printMsg("Aushang in neuem Fenster geöffnet.");return;}
+  }catch(e){}
+  printMsg("Der Aushang lässt sich hier nicht öffnen. Bitte die Seite direkt im Browser öffnen.");
+}
+
+/* ---------- Export / Import ---------- */
+function xferMsg(t){const el=document.getElementById("xferMsg");if(el){el.textContent=t||"";el.hidden=!t;}}
+async function doExport(){
+  const data=JSON.stringify({app:"turnierplaner",version:1,exported:new Date().toISOString(),cfg,results},null,1);
+  const fname="Turnierdaten_"+(cfg.date||"Turnier")+".json";
+  const dl=await dlP;
+  if(dl){try{await dl.save({filename:fname,data});xferMsg("Exportiert. Die Datei jetzt auf das andere Gerät bringen und dort importieren.");}catch(e){if(!(e&&e.code==="declined"))xferMsg("Export hat nicht geklappt. Bitte noch einmal versuchen.");}return;}
+  try{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([data],{type:"application/json"}));a.download=fname;document.body.appendChild(a);a.click();a.remove();xferMsg("Exportiert. Die Datei jetzt auf das andere Gerät bringen und dort importieren.");}
+  catch(e){xferMsg("Export hat nicht geklappt.");}
+}
+async function doImport(file){
+  let d;try{d=JSON.parse(await file.text());}catch(e){xferMsg("Die Datei ist keine gültige Turnierdatei.");return;}
+  if(!d||d.app!=="turnierplaner"||!d.cfg){xferMsg("Die Datei ist keine Turnierdatei aus diesem Planer.");return;}
+  const old=Object.keys(results);
+  cfg=Object.assign(JSON.parse(JSON.stringify(DEF)),d.cfg);results=d.results||{};ensureTeams();render();
+  if(store==="db"){
+    try{
+      await db.doc("turnier/config").set(JSON.parse(JSON.stringify(cfg)));
+      for(const id of old){if(!(id in results))await db.doc("results/"+id).delete();}
+      for(const [id,r] of Object.entries(results))await db.doc("results/"+id).set(r);
+      setSave("ok");
+    }catch(e){setSave("err");xferMsg("Import nur teilweise gespeichert. Bitte noch einmal importieren.");return;}
+  }else saveLocal();
+  xferMsg("Importiert: "+cfg.teams.length+" Mannschaften und "+Object.keys(results).length+" Ergebnisse.");
+}
+
+/* ---------- Eingaben ---------- */
+let renderTimer=null;
+const soon=()=>{clearTimeout(renderTimer);renderTimer=setTimeout(render,120)};
+document.addEventListener("click",e=>{
+  const b=e.target.closest("button");if(!b)return;
+  if(b.dataset.tab){tab=b.dataset.tab;try{history.replaceState(null,"","#"+tab)}catch(_){location.hash=tab}render();window.scrollTo({top:0});return;}
+  const a=b.dataset.act;
+  if(a==="print"){doPrint();return;}
+  if(a==="export"){doExport();return;}
+  if(a==="reset"){confirmReset=true;render();}
+  else if(a==="reset-no"){confirmReset=false;render();}
+  else if(a==="reset-yes"){confirmReset=false;const ids=Object.keys(results);results={};render();
+    if(store==="db"){(async()=>{for(const id of ids){try{await db.doc("results/"+id).delete()}catch(_){setSave("err")}}})();}else saveLocal();}
+  else if(a==="draw"){if(Object.keys(results).length){confirmDraw=true;render();}else doDraw();}
+  else if(a==="draw-no"){confirmDraw=false;render();}
+  else if(a==="draw-yes"){confirmDraw=false;doDraw();}
+});
+function doDraw(){
+  const t=cfg.teams;for(let i=t.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[t[i],t[j]]=[t[j],t[i]];}
+  saveCfg();render();
+}
+document.addEventListener("input",e=>{
+  const el=e.target;
+  if(el.dataset.team){const t=cfg.teams.find(x=>x.id===el.dataset.team);if(!t)return;const k=el.dataset.k;
+    if(k[0]==="p"&&/^p\d+$/.test(k))t.players[+k.slice(1)]=el.value;else t[k]=el.value;saveCfg();soon();return;}
+  if(el.dataset.cfg&&el.type!=="checkbox"&&el.tagName!=="SELECT"){
+    const k=el.dataset.cfg;
+    if(el.type==="number"){if(el.value==="")return;cfg[k]=parseInt(el.value,10);}else cfg[k]=el.value;
+    saveCfg();soon();
+  }
+});
+document.addEventListener("change",e=>{
+  const el=e.target;
+  if(el.id==="importFile"){const f=el.files&&el.files[0];if(f)doImport(f);el.value="";return;}
+  if(el.dataset.mid){
+    const id=el.dataset.mid,f=el.dataset.f;
+    const r=results[id]=Object.assign({h:"",a:""},results[id]);
+    r[f]=el.value===""?"":String(Math.max(0,parseInt(el.value,10)||0));
+    if(r.h===""||r.a===""||r.h!==r.a){delete r.ph;delete r.pa;}
+    if(r.h===""&&r.a===""&&r.ph==null)delete results[id];
+    saveResult(id);render();return;
+  }
+  if(el.dataset.cfg){
+    const k=el.dataset.cfg;
+    if(el.type==="checkbox")cfg[k]=el.checked;
+    else if(el.type==="number"){cfg[k]=parseInt(el.value,10);if(isNaN(cfg[k]))cfg[k]=DEF[k];}
+    else cfg[k]=el.value;
+    if(k==="numTeams"||k==="playersTotal")ensureTeams();
+    saveCfg();render();
+  }
+});
+document.addEventListener("keydown",e=>{
+  if(e.key==="Enter"&&e.target.dataset&&e.target.dataset.mid){e.target.blur();}
+});
+
+/* ---------- Start ---------- */
+const h=(location.hash||"").slice(1);if(TABS.some(t=>t[0]===h))tab=h;
+render();
+setInterval(()=>{if(tab==="plan"&&!(document.activeElement&&document.activeElement.tagName==="INPUT"))render();},60000);
+(async()=>{
+  let api=null;
+  try{api=window.claude&&window.claude.use?await window.claude.use("db"):null;}catch(e){api=null}
+  if(!api){store="local";loadLocal();render();return;}
+  db=api;store="loading";render();
+  let gotCfg=false,gotRes=false;
+  const timer=setTimeout(()=>{if(!(gotCfg&&gotRes)){store="offline";renderChips();}},10000);
+  const ready=()=>{if(gotCfg&&gotRes){clearTimeout(timer);store="db";render();}};
+  db.doc("turnier/config").onSnapshot(s=>{
+    if(cfgDirty||cfgWriting)return;
+    if(s.exists){cfg=Object.assign(JSON.parse(JSON.stringify(DEF)),JSON.parse(JSON.stringify(s.data())));}
+    if(!s.metadata||!s.metadata.fromCache){gotCfg=true;}
+    if(store==="db")render();else ready();
+  },()=>{clearTimeout(timer);store="offline";render();});
+  db.collection("results").onSnapshot(s=>{
+    const r={};s.docs.forEach(d=>{if(d.exists)r[d.id]=Object.assign({},d.data())});
+    const f=document.activeElement;
+    results=r;
+    if(!s.metadata||!s.metadata.fromCache){gotRes=true;}
+    if(store==="db"){if(f&&f.dataset&&f.dataset.mid)return; render();}else ready();
+  },()=>{clearTimeout(timer);store="offline";render();});
+})();
+})();
+</script>
+<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(function(){});}</script></body></html>
