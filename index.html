@@ -140,10 +140,12 @@ ul.rules{margin:0;padding-left:18px;display:grid;gap:4px}
 "use strict";
 const LETTERS="ABCDEFGHIJKL";
 const DEF={
-  title:"Fußballturnier Jg. 8–10", date:"2026-11-20", start:"08:00", end:"11:30",
-  setupMin:20, numTeams:10, groups:2, halls:2, gameMin:8, changeMin:2, breakMin:10,
-  auto:true, koMode:"auto", ko:"SF", third:true, koGameMin:8, finalMin:10, awardMin:10, cleanupMin:20,
-  playersTotal:8, playersField:5, teams:[]
+  title:"Fußballturnier Jg. 8–10", date:"2026-11-20", start:"08:00", end:"11:15",
+  setupMin:20, numTeams:5, groups:1, halls:2, gameMin:15, changeMin:5, breakMin:10,
+  auto:false, koMode:"F", ko:"F", third:true, koGameMin:15, finalMin:15, awardMin:10, cleanupMin:20,
+  playersTotal:8, playersField:5, seed:"anmeldung-2026-11-19e",
+  /* Vorbelegung aus den Anmeldelisten (Mannschaften.pdf) */
+  teams:[{"id": "t1", "name": "8a", "klasse": "8a", "captain": "Marcel Bauer", "players": ["Lukas Göpfert", "Ali Mirzai", "Marcel Bauer", "Yasin Acikgötz", "Ahmad Hosseini", "Maxim Bodrug", "", ""]}, {"id": "t2", "name": "Klasse 8M", "klasse": "8M", "captain": "Masut Ismail Hassan", "players": ["Eilas Baloukthov", "Waleed Ahamad", "Eli Prasko", "Masut Ismail Hassan", "Zulfo Demiroski", "Mayada Farres", "Lias Tahiraj", ""]}, {"id": "t3", "name": "FC Finanzamt", "klasse": "9G", "captain": "Enrico Garcia", "players": ["Sandro Bartz", "Enrico Garcia", "Lirim Tairi", "David Redzematovic", "Paul Katona", "Jan Witecy", "Phillip Steigerwald", ""]}, {"id": "t4", "name": "FC Mittlere Reife 10a", "klasse": "10a", "captain": "Omar Hallak", "players": ["Hayk Dartyan", "Ali Nauruzi", "Noah Mühlich", "Abdul Hama", "Omar Hallak", "Samer Nezirov", "Samet Ayaz", ""]}, {"id": "t5", "name": "FC Mittlere Reife 10b", "klasse": "10b", "captain": "Umut Yildiz", "players": ["Umut Yildiz", "Julian Coli", "Mirwais Noorali", "Johannes Schuster", "Behzad Fakhri", "Elias Levitan", "", ""]}]
 };
 let cfg=JSON.parse(JSON.stringify(DEF));
 let results={};
@@ -293,6 +295,9 @@ function buildRaw(){
     if(seeds.length<Q)Q=seeds.length>=4?4:(seeds.length>=2?2:0);
     seeds.length=Q;
   }
+  // Spiel um Platz 3 ohne Halbfinale: 3. gegen 4. der Vorrunde
+  const p3seed=Q===2&&!!cfg.third&&G===1&&groups[0].teams.length>=4;
+  if(p3seed)seeds.push({place:3,group:groups[0].name},{place:4,group:groups[0].name});
   const order={8:[[1,8],[4,5],[2,7],[3,6]],4:[[1,4],[2,3]],2:[[1,2]]}[Q]||[];
   const pairs=order.map(([x,y])=>[x-1,y-1]);
   // gleiche Gruppe in der ersten K.-o.-Runde vermeiden
@@ -320,7 +325,10 @@ function buildRaw(){
   }
   if(Q>=4&&cfg.third)add("P3","Spiel um Platz 3","P3",{lose:"HF1"},{lose:"HF2"},koGame);
   if(Q>=4)add("F","Finale","F",{win:"HF1"},{win:"HF2"},fin);
-  else if(Q===2)add("F","Finale","F",{seed:pairs[0][0]},{seed:pairs[0][1]},fin);
+  else if(Q===2){
+    if(p3seed)add("P3","Spiel um Platz 3","P3",{seed:2},{seed:3},koGame);
+    add("F","Finale","F",{seed:pairs[0][0]},{seed:pairs[0][1]},fin);
+  }
   const koEnd=ko.length?t-chg:groupEnd;
   const awardStart=Math.ceil((koEnd+5)/5)*5;
   const award=int(cfg.awardMin,10,0,60),clean=int(cfg.cleanupMin,20,0,90);
@@ -385,7 +393,7 @@ const labelShort=id=>id.replace(/^VF/,"VF ").replace(/^HF/,"HF ");
 /* ---------- Speichern ---------- */
 const LS="turnierplaner-v1";
 function saveLocal(){try{localStorage.setItem(LS,JSON.stringify({cfg,results}))}catch(e){}}
-function loadLocal(){try{const d=JSON.parse(localStorage.getItem(LS)||"null");if(d){cfg=Object.assign(JSON.parse(JSON.stringify(DEF)),d.cfg||{});results=d.results||{};}}catch(e){}}
+function loadLocal(){try{const d=JSON.parse(localStorage.getItem(LS)||"null");if(d){const c=d.cfg||{};if(c.seed!==DEF.seed){for(const k in c)delete c[k];}cfg=Object.assign(JSON.parse(JSON.stringify(DEF)),c);results=d.results||{};}}catch(e){}}
 let cfgTimer=null,cfgWriting=false,cfgAgain=false,cfgDirty=false;
 function saveCfg(){
   if(store!=="db"){saveLocal();return;}
@@ -499,8 +507,10 @@ function viewPlan(){
     out.push(`<div class="row${isNow(st,P.game)?" now":""}"><span class="time">${fmt(st)}</span>${cells.join("")}</div>`);
   }
   if(P.ko.length){
-    out.push(`<div class="sep"><span class="time">${fmt(P.groupEnd)}</span><span>Vorrunde vorbei. Tabellen prüfen, Finalrunde ausrufen${H>1?", Ausgeschiedene räumen Halle 2"+(H>2?" bis "+H:"")+" auf":""}</span></div>`);
-    P.ko.forEach(m=>{out.push(`<div class="row${isNow(m.start,m.dur)?" now":""}"><span class="time">${fmt(m.start)}</span>${matchCard(m,true)}${H>1?`<div class="empty-hall" style="grid-column:span ${H-1}"></div>`:""}</div>`);});
+    out.push(`<div class="sep"><span class="time">${fmt(P.groupEnd)}</span><span>Vorrunde vorbei. Tabellen prüfen, Finalrunde ausrufen${H>1&&!P.ko.some(m=>m.hall>0)?", Ausgeschiedene räumen Halle 2"+(H>2?" bis "+H:"")+" auf":""}</span></div>`);
+    [...new Set(P.ko.map(m=>m.start))].forEach(st=>{const ms=P.ko.filter(m=>m.start===st);const cells=[];
+      for(let h=0;h<H;h++){const m=ms.find(x=>x.hall===h);cells.push(m?matchCard(m,true):`<div class="empty-hall"></div>`);}
+      out.push(`<div class="row${ms.some(m=>isNow(m.start,m.dur))?" now":""}"><span class="time">${fmt(st)}</span>${cells.join("")}</div>`);});
   }
   out.push(`<div class="sep"><span class="time">${fmt(P.awardStart)}</span><span>Siegerehrung</span></div>`);
   out.push(`<div class="sep"><span class="time">${fmt(P.cleanStart)}</span><span>Halle aufräumen, alle helfen mit. Fertig um ${fmt(P.planEnd)}</span></div>`);
@@ -536,9 +546,9 @@ function viewKo(){
   const f=S.ko.F,third=p3?S.ko.P3:null;
   let pod="";
   if(f&&f.result){
-    pod=`<div class="card stack"><h2>Siegerehrung</h2><div class="podium"><div><span class="muted small">1. Platz</span><b>${esc(teamName(f.result.w))}</b></div><div><span class="muted small">2. Platz</span><b>${esc(teamName(f.result.l))}</b></div>${third&&third.result?`<div><span class="muted small">3. Platz</span><b>${esc(teamName(third.result.w))}</b></div>`:""}</div></div>`;
+    pod=`<div class="card stack"><h2>Siegerehrung</h2><div class="podium"><div><span class="muted small">1. Platz</span><b>${esc(teamName(f.result.w))}</b></div><div><span class="muted small">2. Platz</span><b>${esc(teamName(f.result.l))}</b></div>${third&&third.result?`<div><span class="muted small">3. Platz</span><b>${esc(teamName(third.result.w))}</b></div><div><span class="muted small">4. Platz</span><b>${esc(teamName(third.result.l))}</b></div>`:""}</div></div>`;
   }
-  return `<div class="stack">${pod}<p class="muted small">Alle Spiele der Finalrunde laufen in Halle 1. Die Paarungen füllen sich, sobald eine Gruppe fertig gespielt ist und Sieger feststehen. Unentschieden: sofort Siebenmeterschießen mit je 3 Schützen, danach im Wechsel bis zur Entscheidung.</p><div class="bracket">${cols}</div>${p3?`<div style="max-width:360px">${matchCard(p3,false)}</div>`:""}</div>`;
+  return `<div class="stack">${pod}<p class="muted small">${P.ko.some(m=>m.hall>0)?"Das Finale läuft in Halle 1, das Spiel um Platz 3 gleichzeitig in Halle 2.":"Alle Spiele der Finalrunde laufen in Halle 1."} Die Paarungen füllen sich, sobald eine Gruppe fertig gespielt ist und Sieger feststehen. Unentschieden: sofort Siebenmeterschießen mit je 3 Schützen, danach im Wechsel bis zur Entscheidung.</p><div class="bracket">${cols}</div>${p3?`<div style="max-width:360px">${matchCard(p3,false)}</div>`:""}</div>`;
 }
 function viewTeams(){
   const gOf={};P.groups.forEach(g=>g.teams.forEach(id=>gOf[id]=g.name));
@@ -622,7 +632,7 @@ function printHTML(){
   }
   const hallHead=Array.from({length:P.H},(_,h)=>`<th colspan="3">Halle ${h+1} · Gruppe ${hallGroups(P,h).join(", ")||"–"}</th>`).join("");
   const groups=P.groups.map(g=>`<div class="grp"><h3>Gruppe ${g.name} <small>${hallTxt(P,g)}</small></h3><ol>${g.teams.map(id=>{const t=cfg.teams.find(x=>x.id===id);return `<li>${esc(teamName(id))}${t&&t.klasse?` <small>(${esc(t.klasse)})</small>`:""}</li>`}).join("")}</ol></div>`).join("");
-  const ko=P.ko.map(m=>{const k=S.ko[m.id];return `<tr><td class="tm">${fmt(m.start)}</td><td><b>${esc(m.label)}</b></td><td>${nm(k.home)} – ${nm(k.away)}</td><td class="sc">${sc(m.id)}</td></tr>`}).join("");
+  const ko=P.ko.map(m=>{const k=S.ko[m.id];return `<tr><td class="tm">${fmt(m.start)}</td><td><b>${esc(m.label)}</b>${P.ko.some(x=>x.hall>0)?` <small>Halle ${m.hall+1}</small>`:""}</td><td>${nm(k.home)} – ${nm(k.away)}</td><td class="sc">${sc(m.id)}</td></tr>`}).join("");
   const tables=P.groups.map(g=>{const tb=S.tabs[g.name];const any=tb.played>0;
     return `<div class="grp"><h3>Gruppe ${g.name}</h3><table class="tb"><tr><th>Pl.</th><th>Mannschaft</th><th>Sp</th><th>Tore</th><th>Pkt</th></tr>${tb.rows.map((r,i)=>`<tr><td>${i+1}</td><td>${any?esc(teamName(r.id)):""}</td><td>${any?r.sp:""}</td><td>${any?r.tf+":"+r.tg:""}</td><td>${any?r.pts:""}</td></tr>`).join("")}</table></div>`}).join("");
   const koName={QF:"Viertelfinale",SF:"Halbfinale",F:"Finale"};
@@ -660,13 +670,13 @@ th{background:#e6f1ea;font-size:10pt}
 <div class="page">
 <h1>${esc(cfg.title)}</h1>
 <div class="sub">${dateTxt} · ${esc(cfg.start)}–${esc(cfg.end)} Uhr · ${P.N} Mannschaften</div>
-<div class="flow"><span><b>${cfg.start}</b> Aufbau und Begrüßung</span><span><b>${fmt(P.t0)}</b> Vorrunde</span>${P.ko.length?`<span><b>${fmt(P.koStart)}</b> ${koName[cfg.ko]||"Finalrunde"} in Halle 1</span>`:""}<span><b>${fmt(P.awardStart)}</b> Siegerehrung</span><span><b>${fmt(P.cleanStart)}</b> Aufräumen</span><span>Spielzeit ${P.game} Min.${P.ko.length?`, Finale ${cfg.finalMin} Min.`:""}</span></div>
+<div class="flow"><span><b>${cfg.start}</b> Aufbau und Begrüßung</span><span><b>${fmt(P.t0)}</b> Vorrunde</span>${P.ko.length?`<span><b>${fmt(P.koStart)}</b> ${cfg.ko==="F"&&P.ko.some(m=>m.round==="P3")?"Spiel um Platz 3 und Finale":(koName[cfg.ko]||"Finalrunde")} in Halle 1${P.ko.some(m=>m.hall>0)?", Spiel um Platz 3 in Halle 2":""}</span>`:""}<span><b>${fmt(P.awardStart)}</b> Siegerehrung</span><span><b>${fmt(P.cleanStart)}</b> Aufräumen</span><span>Spielzeit ${P.game} Min.${P.ko.length?`, Finale ${cfg.finalMin} Min.`:""}</span></div>
 <h2>Gruppen</h2><div class="groups">${groups}</div>
 <h2>Vorrunde</h2>
 <table><thead><tr><th>Zeit</th>${hallHead}</tr></thead><tbody>${rows}</tbody></table>
 </div>
 <div class="page">
-${P.ko.length?`<h2>Finalrunde · Halle 1</h2><table><tr><th>Zeit</th><th>Spiel</th><th>Paarung</th><th>Ergebnis</th></tr>${ko}</table>`:""}
+${P.ko.length?`<h2>Finalrunde${P.ko.some(m=>m.hall>0)?"":" · Halle 1"}</h2><table><tr><th>Zeit</th><th>Spiel</th><th>Paarung</th><th>Ergebnis</th></tr>${ko}</table>`:""}
 <h2>Tabellen</h2><div class="groups">${tables}</div>
 <h2>Regeln</h2>
 <ul class="rules"><li>Sieg 3 Punkte, Unentschieden 1 Punkt. Bei Punktgleichheit zählen Tordifferenz, geschossene Tore, dann der direkte Vergleich.</li>
