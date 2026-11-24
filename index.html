@@ -117,6 +117,23 @@ button.b:disabled{opacity:.5;cursor:not-allowed}
 .note{padding:10px 12px;border-radius:6px;background:var(--soft);font-size:.9rem}
 .note.warn{background:transparent;border:1px solid var(--warn)}
 ul.rules{margin:0;padding-left:18px;display:grid;gap:4px}
+/* Archiv */
+.alist{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.aitem{font:inherit;text-align:left;cursor:pointer;color:var(--fg);display:grid;gap:4px;width:100%}
+.aitem:hover{border-color:var(--pitch)}
+.aitem .cup{font-family:var(--display);font-size:1.3rem;color:var(--pitch);font-weight:700}
+.glist{display:grid;gap:4px}
+.gl{display:grid;grid-template-columns:52px minmax(0,1.1fr) minmax(0,2fr) auto minmax(0,2fr);gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--line);font-size:.92rem}
+.gl .tm{font-variant-numeric:tabular-nums;font-weight:700}
+.gl .lb{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.gl.ko .lb{color:var(--chalk)}
+.gl .h{text-align:right}
+.gl .sc{font-weight:700;font-variant-numeric:tabular-nums;text-align:center;white-space:nowrap;min-width:56px}
+.gl .w{font-weight:700;color:var(--pitch)}
+@media (max-width:640px){.gl{grid-template-columns:44px minmax(0,1fr) auto minmax(0,1fr)}.gl .lb{display:none}}
+details.tm{border-top:1px solid var(--line);padding-top:8px}
+details.tm summary{cursor:pointer;font-weight:600}
+.big{font-size:1rem;padding:11px 18px}
 @media (prefers-reduced-motion:no-preference){.match{transition:background .2s}}
 </style>
 
@@ -144,8 +161,7 @@ const DEF={
   setupMin:40, numTeams:5, groups:1, halls:2, gameMin:12, changeMin:5, breakMin:10,
   auto:false, koMode:"F", ko:"F", third:true, koGameMin:12, finalMin:15, awardMin:10, cleanupMin:15,
   playersTotal:8, playersField:5, seed:"anmeldung-2026-11-20a",
-  /* Vorbelegung aus den Anmeldelisten (Mannschaften.pdf) */
-  teams:[{"id": "t1", "name": "8a", "klasse": "8a", "captain": "Marcel Bauer", "players": ["Lukas Göpfert", "Ali Mirzai", "Marcel Bauer", "Yasin Acikgötz", "Ahmad Hosseini", "Maxim Bodrug", "", ""]}, {"id": "t2", "name": "Klasse 8M", "klasse": "8M", "captain": "Masut Ismail Hassan", "players": ["Eilas Baloukthov", "Waleed Ahamad", "Eli Prasko", "Masut Ismail Hassan", "Zulfo Demiroski", "Mayada Farres", "Lias Tahiraj", ""]}, {"id": "t3", "name": "FC Finanzamt", "klasse": "9G", "captain": "Enrico Garcia", "players": ["Sandro Bartz", "Enrico Garcia", "Lirim Tairi", "David Redzematovic", "Paul Katona", "Jan Witecy", "Phillip Steigerwald", ""]}, {"id": "t4", "name": "FC Mittlere Reife 10a", "klasse": "10a", "captain": "Omar Hallak", "players": ["Hayk Dartyan", "Ali Nauruzi", "Noah Mühlich", "Abdul Hama", "Omar Hallak", "Samer Nezirov", "Samet Ayaz", ""]}, {"id": "t5", "name": "FC Mittlere Reife 10b", "klasse": "10b", "captain": "Umut Yildiz", "players": ["Umut Yildiz", "Julian Coli", "Mirwais Noorali", "Johannes Schuster", "Behzad Fakhri", "Elias Levitan", "", ""]}]
+  teams:[]
 };
 let cfg=JSON.parse(JSON.stringify(DEF));
 let results={};
@@ -153,6 +169,7 @@ let store="loading"; // loading | db | local | offline
 let db=null;
 let tab="plan";
 let confirmReset=false, confirmDraw=false;
+let arch=[], archOpen=null, confirmArchDel=false, archMsg="", resetMsg="";
 
 /* ---------- Helpers ---------- */
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -166,11 +183,11 @@ function ensureTeams(){
   cfg.playersTotal=int(cfg.playersTotal,8,1,20);
   if(!Array.isArray(cfg.teams))cfg.teams=[];
   let maxId=cfg.teams.reduce((m,t)=>Math.max(m,parseInt(String(t.id).slice(1),10)||0),0);
-  while(cfg.teams.length<cfg.numTeams){maxId++;cfg.teams.push({id:"t"+maxId,name:"Team "+(cfg.teams.length+1),klasse:"",captain:"",players:[]});}
+  while(cfg.teams.length<cfg.numTeams){maxId++;cfg.teams.push({id:"t"+maxId,name:"",klasse:"",captain:"",players:[]});}
   if(cfg.teams.length>cfg.numTeams)cfg.teams.length=cfg.numTeams;
   cfg.teams.forEach(t=>{if(!Array.isArray(t.players))t.players=[];while(t.players.length<cfg.playersTotal)t.players.push("");});
 }
-const teamName=id=>{const t=cfg.teams.find(x=>x.id===id);return t?(t.name||"Ohne Namen"):"?"};
+const teamName=id=>{const i=cfg.teams.findIndex(x=>x.id===id);return i<0?"?":(String(cfg.teams[i].name||"").trim()||"Team "+(i+1))};
 
 /* ---------- Spielplan berechnen ---------- */
 function roundRobin(ids){
@@ -425,7 +442,7 @@ let saveState="";
 function setSave(s){saveState=s;renderChips();}
 
 /* ---------- Rendern ---------- */
-const TABS=[["plan","Spielplan"],["tabellen","Tabellen"],["finalrunde","Finalrunde"],["teams","Mannschaften"],["setup","Einstellungen"]];
+const TABS=[["plan","Spielplan"],["tabellen","Tabellen"],["finalrunde","Finalrunde"],["teams","Mannschaften"],["setup","Einstellungen"],["archiv","Archiv"]];
 let P=null,S=null;
 function render(){
   const f=document.activeElement;let keep=null;
@@ -436,7 +453,7 @@ function render(){
   document.getElementById("hdrDate").textContent=(d&&!isNaN(d)?d.toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long",year:"numeric"}):"")+" · "+cfg.start+"–"+cfg.end+" Uhr";
   renderChips();renderNext();renderTabs();
   const v=document.getElementById("view");
-  v.innerHTML=({plan:viewPlan,tabellen:viewTables,finalrunde:viewKo,teams:viewTeams,setup:viewSetup}[tab]||viewPlan)();
+  v.innerHTML=({plan:viewPlan,tabellen:viewTables,finalrunde:viewKo,teams:viewTeams,setup:viewSetup,archiv:viewArchiv}[tab]||viewPlan)();
   if(keep){const el=document.getElementById(keep.id);if(el){if(keep.type!=="checkbox")el.value=keep.v;el.focus({preventScroll:true});try{if(keep.s!=null)el.setSelectionRange(keep.s,keep.e)}catch(e){}}}
 }
 function renderChips(){
@@ -546,7 +563,7 @@ function viewKo(){
   const f=S.ko.F,third=p3?S.ko.P3:null;
   let pod="";
   if(f&&f.result){
-    pod=`<div class="card stack"><h2>Siegerehrung</h2><div class="podium"><div><span class="muted small">1. Platz</span><b>${esc(teamName(f.result.w))}</b></div><div><span class="muted small">2. Platz</span><b>${esc(teamName(f.result.l))}</b></div>${third&&third.result?`<div><span class="muted small">3. Platz</span><b>${esc(teamName(third.result.w))}</b></div><div><span class="muted small">4. Platz</span><b>${esc(teamName(third.result.l))}</b></div>`:""}</div></div>`;
+    pod=`<div class="card stack"><h2>Siegerehrung</h2><div class="podium"><div><span class="muted small">1. Platz</span><b>${esc(teamName(f.result.w))}</b></div><div><span class="muted small">2. Platz</span><b>${esc(teamName(f.result.l))}</b></div>${third&&third.result?`<div><span class="muted small">3. Platz</span><b>${esc(teamName(third.result.w))}</b></div><div><span class="muted small">4. Platz</span><b>${esc(teamName(third.result.l))}</b></div>`:""}</div>${archBox()}</div>`;
   }
   return `<div class="stack">${pod}<p class="muted small">${P.ko.some(m=>m.hall>0)?"Das Finale läuft in Halle 1, das Spiel um Platz 3 gleichzeitig in Halle 2.":"Alle Spiele der Finalrunde laufen in Halle 1."} Die Paarungen füllen sich, sobald eine Gruppe fertig gespielt ist und Sieger feststehen. Unentschieden: sofort Siebenmeterschießen mit je 3 Schützen, danach im Wechsel bis zur Entscheidung.</p><div class="bracket">${cols}</div>${p3?`<div style="max-width:360px">${matchCard(p3,false)}</div>`:""}</div>`;
 }
@@ -555,7 +572,7 @@ function viewTeams(){
   const pf=int(cfg.playersField,5,1,cfg.playersTotal);
   const cards=cfg.teams.map((t,i)=>`<div class="card team">
     <div class="hd"><span class="g">Gruppe ${gOf[t.id]||"?"}</span><span class="muted small">Nr. ${i+1}</span></div>
-    <label class="f">Teamname<input type="text" id="t-${t.id}-name" data-team="${t.id}" data-k="name" value="${esc(t.name)}"></label>
+    <label class="f">Teamname<input type="text" id="t-${t.id}-name" data-team="${t.id}" data-k="name" placeholder="Team ${i+1}" value="${esc(t.name)}"></label>
     <div class="form" style="grid-template-columns:1fr 1fr"><label class="f">Klasse<input type="text" id="t-${t.id}-klasse" data-team="${t.id}" data-k="klasse" value="${esc(t.klasse)}"></label><label class="f">Kapitän/in<input type="text" id="t-${t.id}-captain" data-team="${t.id}" data-k="captain" value="${esc(t.captain)}"></label></div>
     <div class="players">${t.players.slice(0,cfg.playersTotal).map((p,j)=>`<div class="pl${j>=pf?" sub":""}"><span>${j<pf?"Feld "+(j+1):"Wechsel "+(j-pf+1)}</span><input type="text" id="t-${t.id}-p${j}" data-team="${t.id}" data-k="p${j}" value="${esc(p)}" aria-label="Spieler ${j+1}"></div>`).join("")}</div>
   </div>`).join("");
@@ -608,9 +625,191 @@ function viewSetup(){
     <p class="muted small">Zum Beispiel vom Schul-PC auf das iPad: Hier exportieren, die Datei per Mail, Cloud oder USB-Stick weitergeben und auf dem anderen Gerät importieren. Übertragen werden Mannschaften, Einstellungen und Ergebnisse. Beim Import wird der Stand auf diesem Gerät ersetzt.</p>
     <div class="btns"><button class="b" data-act="export">Daten exportieren</button><label class="b sec" style="display:inline-block;cursor:pointer;border:1px solid var(--pitch);border-radius:6px;padding:8px 14px;font-weight:600;color:var(--pitch)">Datei importieren<input type="file" id="importFile" accept=".json,application/json,text/plain" style="display:none"></label></div>
     <p class="small" id="xferMsg" hidden></p></div>
-  <div class="card stack"><h2>Ergebnisse</h2><p class="muted small">Löscht alle eingetragenen Ergebnisse. Mannschaften und Einstellungen bleiben.</p>
-    <div class="btns">${confirmReset?`<span>Alle Ergebnisse löschen?</span><button class="b danger" data-act="reset-yes">Ja, löschen</button><button class="b sec" data-act="reset-no">Abbrechen</button>`:`<button class="b danger" data-act="reset">Alle Ergebnisse löschen</button>`}</div></div>
+  <div class="card stack"><h2>Neues Turnier</h2><p class="muted small">Löscht alle Ergebnisse und alle Mannschaften mit Namen, Klassen, Kapitän/innen und Spieler/innen, damit du alles neu eintragen kannst. Turniername, Datum, Zeiten und Hallen bleiben stehen und lassen sich oben anpassen. Gespeicherte Turniere im Archiv bleiben erhalten.</p>
+    ${confirmReset?`${hasData()&&!isArchived()?`<div class="note warn">Dieses Turnier ist noch nicht im Archiv gespeichert. Speichere es vorher, sonst sind die Ergebnisse weg.</div>`:""}<div class="btns"><span>Wirklich alles löschen?</span><button class="b danger" data-act="reset-yes">Ja, alles löschen</button>${hasData()&&!isArchived()?`<button class="b" data-act="arch-save">Erst ins Archiv speichern</button>`:""}<button class="b sec" data-act="reset-no">Abbrechen</button></div>`:`<div class="btns"><button class="b danger" data-act="reset">Alles löschen (Ergebnisse und Mannschaften)</button></div>`}
+    ${resetMsg?`<p class="small">${esc(resetMsg)}</p>`:""}</div>
   </div>`;
+}
+
+/* ---------- Archiv gespielter Turniere ---------- */
+const LSA="turnierplaner-archiv-v1";
+function loadArchLocal(){try{const a=JSON.parse(localStorage.getItem(LSA)||"[]");arch=Array.isArray(a)?a:[];}catch(e){arch=[];}}
+function saveArchLocal(){try{localStorage.setItem(LSA,JSON.stringify(arch));return true;}catch(e){return false;}}
+const hasData=()=>Object.keys(results).length>0;
+const isArchived=()=>!!cfg.archivedId&&arch.some(a=>a.id===cfg.archivedId);
+const fmtDate=d=>{const x=d?new Date(d+"T12:00:00"):null;return x&&!isNaN(x)?x.toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long",year:"numeric"}):"";};
+const scoreTxt=r=>{if(!r||r.h==null||r.a==null)return "–";let t=r.h+" : "+r.a;if(r.h===r.a&&r.ph!=null&&r.pa!=null)t+=" ("+r.ph+":"+r.pa+" n. 7m)";return t;};
+/* Momentaufnahme mit fertigen Namen und Zahlen, damit die Übersicht auch nach späteren App-Änderungen gleich bleibt */
+function snapshot(){
+  const P=build(),S=solve(P);
+  const sc=id=>{const r=res(id);return r?{h:r.h,a:r.a,ph:r.ph,pa:r.pa}:null;};
+  const games=P.matches.slice().sort((x,y)=>x.start-y.start||x.hall-y.hall).map(m=>{const r=sc(m.id);
+    return {t:fmt(m.start),hall:m.hall+1,lbl:"Gruppe "+m.group,ko:false,home:teamName(m.a),away:teamName(m.b),r,win:r?(r.h>r.a?"h":r.a>r.h?"a":""):""};});
+  P.ko.forEach(m=>{const k=S.ko[m.id];const hn=k.home.id?teamName(k.home.id):k.home.label,an=k.away.id?teamName(k.away.id):k.away.label;
+    games.push({t:fmt(m.start),hall:m.hall+1,lbl:m.label,ko:true,home:hn,away:an,r:sc(m.id),win:k.result?(k.result.w===k.home.id?"h":"a"):""});});
+  const tables=P.groups.map(g=>{const tb=S.tabs[g.name];return {name:g.name,complete:tb.complete,rows:tb.rows.map(r=>({team:teamName(r.id),sp:r.sp,s:r.s,u:r.u,n:r.n,tf:r.tf,tg:r.tg,pts:r.pts}))};});
+  let podium=[];
+  const f=S.ko.F,p3=S.ko.P3;
+  if(f&&f.result){podium=[teamName(f.result.w),teamName(f.result.l)];if(p3&&p3.result)podium.push(teamName(p3.result.w),teamName(p3.result.l));}
+  else if(!P.ko.length&&P.G===1&&tables[0].complete)podium=tables[0].rows.slice(0,4).map(r=>r.team);
+  const played=games.filter(g=>g.r).length;
+  const goals=games.reduce((n,g)=>n+(g.r?g.r.h+g.r.a:0),0);
+  const teams=cfg.teams.map(t=>({name:teamName(t.id),klasse:t.klasse||"",captain:t.captain||"",players:(t.players||[]).slice(0,cfg.playersTotal).filter(p=>String(p||"").trim())}));
+  return {title:cfg.title||"Fußballturnier",date:cfg.date||"",start:cfg.start||"",end:cfg.end||"",games,tables,podium,teams,played,total:games.length,goals};
+}
+function withState(c,r,fn){
+  const oc=cfg,or=results,oa=autoInfo;
+  cfg=Object.assign(JSON.parse(JSON.stringify(DEF)),JSON.parse(JSON.stringify(c||{})));results=JSON.parse(JSON.stringify(r||{}));
+  try{return fn();}finally{cfg=oc;results=or;autoInfo=oa;}
+}
+function makeEntry(id){
+  return {id,title:cfg.title||"Fußballturnier",date:cfg.date||"",savedAt:new Date().toISOString(),snap:snapshot(),
+    data:{cfg:JSON.parse(JSON.stringify(cfg)),results:JSON.parse(JSON.stringify(results))}};
+}
+async function putArch(e){
+  if(store==="db"){await db.doc("archiv/"+e.id).set(JSON.parse(JSON.stringify(e)));}
+  else if(store==="local"){arch=arch.filter(a=>a.id!==e.id);arch.push(e);if(!saveArchLocal())throw new Error("voll");}
+  else throw new Error("offline");
+  if(!arch.some(a=>a.id===e.id))arch.push(e);else arch=arch.map(a=>a.id===e.id?e:a);
+}
+async function delArch(id){
+  if(store==="db")await db.doc("archiv/"+id).delete();
+  arch=arch.filter(a=>a.id!==id);
+  if(store==="local")saveArchLocal();
+}
+async function doArchive(){
+  const id=cfg.archivedId&&arch.some(a=>a.id===cfg.archivedId)?cfg.archivedId:"a"+Date.now().toString(36);
+  const prev=cfg.archivedId;cfg.archivedId=id;
+  const e=makeEntry(id);
+  try{await putArch(e);saveCfg();archMsg="ok";}
+  catch(err){cfg.archivedId=prev;archMsg=store==="db"||store==="local"?"Speichern hat nicht geklappt. Bitte noch einmal versuchen.":"Der Speicher ist gerade nicht erreichbar. Bitte gleich noch einmal versuchen.";}
+  render();
+}
+function doResetAll(){
+  const ids=Object.keys(results);
+  results={};
+  cfg.teams=cfg.teams.map(t=>({id:t.id,name:"",klasse:"",captain:"",players:[]}));
+  delete cfg.archivedId;confirmDraw=false;archMsg="";
+  ensureTeams();
+  resetMsg="Alles gelöscht. Unter Mannschaften kannst du die neuen Teams eintragen.";
+  render();
+  if(store==="db"){saveCfg();(async()=>{for(const id of ids){try{await db.doc("results/"+id).delete()}catch(_){setSave("err")}}})();}
+  else saveLocal();
+}
+/* Älterer Stand nur auf diesem Gerät (z. B. als der gemeinsame Speicher nicht erreichbar war) */
+function localLeftover(){
+  if(store!=="db")return null;
+  try{const d=JSON.parse(localStorage.getItem(LS)||"null");if(d&&d.results&&Object.keys(d.results).length&&d.cfg)return d;}catch(e){}
+  return null;
+}
+function archBox(){
+  const n=Object.values(results).filter(r=>r&&r.h!==""&&r.a!=="").length;
+  const done=isArchived();
+  let msg="";
+  if(archMsg==="ok")msg=`<div class="note">Gespeichert. Du findest das Turnier jetzt im Reiter Archiv. Für ein neues Turnier unter Einstellungen „Alles löschen“ wählen.</div>`;
+  else if(archMsg)msg=`<div class="note warn">${esc(archMsg)}</div>`;
+  return `<div class="stack" style="margin-top:12px">${msg}<div class="btns"><button class="b big" data-act="arch-save" ${n?"":"disabled"}>${done?"Archiv-Eintrag aktualisieren":"Turnier als gespielt speichern"}</button>
+    <span class="muted small">${n?n+" Ergebnisse"+(done?" · schon im Archiv, nochmal speichern übernimmt spätere Änderungen":""):"Noch keine Ergebnisse eingetragen"}</span></div></div>`;
+}
+function viewArchiv(){
+  if(archOpen){const e=arch.find(a=>a.id===archOpen);if(e)return viewArchEntry(e);archOpen=null;}
+  const P0=P;const total=P0.matches.length+P0.ko.length;
+  const n=Object.values(results).filter(r=>r&&r.h!==""&&r.a!=="").length;
+  const left=localLeftover();
+  const leftBox=left?`<div class="card stack"><h3>Älterer Stand auf diesem Gerät gefunden</h3><p class="small">Auf diesem Gerät liegt noch ein Stand „${esc(left.cfg.title||"Fußballturnier")}“ vom ${esc(fmtDate(left.cfg.date))} mit ${Object.keys(left.results).length} Ergebnissen, der nicht im gemeinsamen Speicher ist.</p><div class="btns"><button class="b" data-act="arch-leftover">Diesen Stand ins Archiv speichern</button></div></div>`:"";
+  const list=arch.slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")||(b.savedAt||"").localeCompare(a.savedAt||""));
+  const items=list.map(e=>{const s=e.snap||{};const champ=(s.podium||[])[0];
+    return `<button class="card aitem" data-act="arch-open" data-id="${esc(e.id)}"><span class="muted small">${esc(fmtDate(e.date))}</span><h3>${esc(e.title)}</h3>${champ?`<span class="cup">🏆 ${esc(champ)}</span>`:`<span class="muted small">Kein Sieger eingetragen</span>`}<span class="muted small">${(s.teams||[]).length} Mannschaften · ${s.played||0} Spiele · ${s.goals||0} Tore</span></button>`;}).join("");
+  const stTxt=store==="db"?"Das Archiv ist gemeinsam gespeichert und auf allen Geräten mit diesem Link zu sehen.":store==="local"?"Das Archiv liegt nur in diesem Browser auf diesem Gerät. Mit „Als Datei sichern“ kannst du ein Turnier zusätzlich als Datei aufheben.":"Der Speicher wird noch verbunden …";
+  return `<div class="stack">
+  <div class="card stack"><h2>Aktuelles Turnier</h2><p><b>${esc(cfg.title||"Fußballturnier")}</b> <span class="muted">· ${esc(fmtDate(cfg.date))} · ${n} von ${total} Spielen eingetragen</span></p>${n&&n<total?`<p class="muted small">Es sind noch nicht alle Spiele eingetragen. Du kannst trotzdem speichern und später aktualisieren.</p>`:""}${archBox()}</div>
+  ${leftBox}
+  <div class="stack"><h2>Gespielte Turniere</h2><p class="muted small">${stTxt}</p>${items?`<div class="alist">${items}</div>`:`<div class="note">Noch kein Turnier gespeichert.</div>`}</div>
+  <div class="card stack"><h3>Turnier aus Datei übernehmen</h3><p class="muted small">Eine Datei von „Als Datei sichern“ oder „Daten exportieren“ (zum Beispiel von einem anderen Gerät) als gespieltes Turnier ins Archiv legen. Das aktuelle Turnier bleibt dabei unverändert.</p>
+    <div class="btns"><label class="b sec" style="display:inline-block;cursor:pointer;border:1px solid var(--pitch);border-radius:6px;padding:8px 14px;font-weight:600;color:var(--pitch)">Datei auswählen<input type="file" id="archFile" accept=".json,application/json,text/plain" style="display:none"></label></div>
+    <p class="small" id="archFileMsg" hidden></p></div>
+  </div>`;
+}
+function gameRows(games){
+  return games.map(g=>`<div class="gl${g.ko?" ko":""}"><span class="tm">${esc(g.t)}</span><span class="lb">${esc(g.lbl)}${g.ko?"":" · H"+g.hall}</span><span class="h${g.win==="h"?" w":""}">${esc(g.home)}</span><span class="sc">${esc(scoreTxt(g.r))}</span><span class="${g.win==="a"?"w":""}">${esc(g.away)}</span></div>`).join("");
+}
+function tableHTML(t,i,all){
+  return `<div class="card stack"><h3>${all.length>1?"Gruppe "+esc(t.name):"Abschlusstabelle Vorrunde"}</h3><div class="scroll"><table><thead><tr><th>Pl.</th><th>Mannschaft</th><th class="n">Sp</th><th class="n">S</th><th class="n">U</th><th class="n">N</th><th class="n">Tore</th><th class="n">Diff</th><th class="n">Pkt</th></tr></thead><tbody>${t.rows.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.team)}</td><td class="n">${r.sp}</td><td class="n">${r.s}</td><td class="n">${r.u}</td><td class="n">${r.n}</td><td class="n">${r.tf}:${r.tg}</td><td class="n">${r.tf-r.tg>0?"+":""}${r.tf-r.tg}</td><td class="n"><b>${r.pts}</b></td></tr>`).join("")}</tbody></table></div></div>`;
+}
+function viewArchEntry(e){
+  const s=e.snap||{};const pod=s.podium||[];
+  const podHTML=pod.length?`<div class="card stack"><h2>Siegerehrung</h2><div class="podium">${pod.map((t,i)=>`<div><span class="muted small">${i+1}. Platz</span><b>${i===0?"🏆 ":""}${esc(t)}</b></div>`).join("")}</div></div>`:"";
+  const ko=(s.games||[]).filter(g=>g.ko),grp=(s.games||[]).filter(g=>!g.ko);
+  const teams=(s.teams||[]).map(t=>`<div class="card team"><h3>${esc(t.name)}</h3><p class="muted small">${[t.klasse?"Klasse "+esc(t.klasse):"",t.captain?"Kapitän/in: "+esc(t.captain):""].filter(Boolean).join(" · ")||"&nbsp;"}</p>${t.players.length?`<p class="small">${t.players.map(esc).join(", ")}</p>`:""}</div>`).join("");
+  return `<div class="stack">
+  <div class="btns"><button class="b sec" data-act="arch-close">← Zurück zum Archiv</button></div>
+  <div class="card stack"><span class="muted small">${esc(fmtDate(e.date))}${s.start?" · "+esc(s.start)+"–"+esc(s.end)+" Uhr":""}</span><h2 style="font-size:2rem">${esc(e.title)}</h2>
+    <div class="chips"><span class="chip">${(s.teams||[]).length} Mannschaften</span><span class="chip">${s.played||0} von ${s.total||0} Spielen</span><span class="chip">${s.goals||0} Tore</span>${s.played?`<span class="chip">${(s.goals/s.played).toFixed(1).replace(".",",")} Tore pro Spiel</span>`:""}</div></div>
+  ${podHTML}
+  ${ko.length?`<div class="card stack"><h2>Finalrunde</h2><div class="glist">${gameRows(ko)}</div></div>`:""}
+  <div class="grid2">${(s.tables||[]).map(tableHTML).join("")}</div>
+  <div class="card stack"><h2>Alle Spiele der Vorrunde</h2><div class="glist">${gameRows(grp)}</div></div>
+  <div class="stack"><h2>Mannschaften</h2><div class="teams">${teams}</div></div>
+  <div class="card stack"><div class="btns"><button class="b" data-act="arch-print">Übersicht drucken</button><button class="b sec" data-act="arch-export">Als Datei sichern</button>
+    ${confirmArchDel?`<span>Dieses Turnier aus dem Archiv löschen?</span><button class="b danger" data-act="arch-del-yes">Ja, löschen</button><button class="b sec" data-act="arch-del-no">Abbrechen</button>`:`<button class="b danger" data-act="arch-del">Aus dem Archiv löschen</button>`}</div>
+    <p class="muted small" id="archPrintMsg" hidden></p></div>
+  </div>`;
+}
+function archPrintHTML(e){
+  const s=e.snap||{};const pod=s.podium||[];
+  const rows=g=>g.map(x=>`<tr><td class="tm">${esc(x.t)}</td><td>${esc(x.lbl)}</td><td class="r${x.win==="h"?" w":""}">${esc(x.home)}</td><td class="sc">${esc(scoreTxt(x.r))}</td><td class="${x.win==="a"?"w":""}">${esc(x.away)}</td></tr>`).join("");
+  const ko=(s.games||[]).filter(g=>g.ko),grp=(s.games||[]).filter(g=>!g.ko);
+  const tabs=(s.tables||[]).map(t=>`<h3>${(s.tables.length>1?"Gruppe "+esc(t.name):"Abschlusstabelle Vorrunde")}</h3><table><tr><th>Pl.</th><th>Mannschaft</th><th>Sp</th><th>S</th><th>U</th><th>N</th><th>Tore</th><th>Pkt</th></tr>${t.rows.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.team)}</td><td>${r.sp}</td><td>${r.s}</td><td>${r.u}</td><td>${r.n}</td><td>${r.tf}:${r.tg}</td><td><b>${r.pts}</b></td></tr>`).join("")}</table>`).join("");
+  return `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Ergebnisse ${esc(e.title)}</title>
+<style>@page{size:A4;margin:12mm}body{font-family:Arial,Helvetica,sans-serif;font-size:10.5pt;color:#000;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+h1{font-size:20pt;margin:0}h2{font-size:13pt;margin:5mm 0 2mm;border-bottom:2px solid #1d7444;padding-bottom:1mm}h3{font-size:11pt;margin:3mm 0 1mm}
+.sub{margin:1mm 0 3mm;color:#333}.pod{display:flex;gap:3mm}.pod div{flex:1;background:#e6f1ea;border-radius:2mm;padding:2mm 3mm}.pod b{display:block;font-size:13pt}
+table{border-collapse:collapse;width:100%}th,td{border:1px solid #999;padding:1mm 2mm;text-align:left}th{background:#e6f1ea}tr{break-inside:avoid}
+.tm{width:13mm;font-weight:bold}.sc{text-align:center;white-space:nowrap;font-weight:bold;width:30mm}.r{text-align:right}.w{font-weight:bold}
+.teams{columns:2;column-gap:6mm;font-size:9.5pt}.teams p{margin:0 0 2mm;break-inside:avoid}
+.noprint{margin:10px 0;padding:10px;background:#fff4d6;font-size:12pt}@media print{.noprint{display:none}}</style></head><body>
+<div class="noprint">Der Druckdialog sollte sich gleich öffnen. Falls nicht: Strg+P drücken.</div>
+<h1>${esc(e.title)}</h1><div class="sub">${esc(fmtDate(e.date))} · ${(s.teams||[]).length} Mannschaften · ${s.played||0} Spiele · ${s.goals||0} Tore</div>
+${pod.length?`<h2>Siegerehrung</h2><div class="pod">${pod.map((t,i)=>`<div>${i+1}. Platz<b>${esc(t)}</b></div>`).join("")}</div>`:""}
+${ko.length?`<h2>Finalrunde</h2><table>${rows(ko)}</table>`:""}
+<h2>Tabellen</h2>${tabs}
+<h2>Vorrunde</h2><table>${rows(grp)}</table>
+<h2>Mannschaften</h2><div class="teams">${(s.teams||[]).map(t=>`<p><b>${esc(t.name)}</b>${t.klasse?" ("+esc(t.klasse)+")":""}${t.captain?", Kapitän/in "+esc(t.captain):""}${t.players.length?"<br>"+t.players.map(esc).join(", "):""}</p>`).join("")}</div>
+<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},300)});<\/script><script>if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(function(){});}</script></body></html>`;
+}
+function archFileMsg(t){const el=document.getElementById("archFileMsg");if(el){el.textContent=t||"";el.hidden=!t;}}
+async function archImport(file){
+  let d;try{d=JSON.parse(await file.text());}catch(e){archFileMsg("Die Datei ist keine gültige Turnierdatei.");return;}
+  if(!d||d.app!=="turnierplaner"){archFileMsg("Die Datei ist keine Turnierdatei aus diesem Planer.");return;}
+  let e;
+  if(d.kind==="archiv"&&d.entry&&d.entry.snap){e=Object.assign({},d.entry);if(!e.id)e.id="a"+Date.now().toString(36);}
+  else if(d.cfg){e=withState(d.cfg,d.results,()=>makeEntry("a"+Date.now().toString(36)));}
+  else{archFileMsg("In der Datei steht kein Turnier.");return;}
+  try{await putArch(e);render();archFileMsg("„"+e.title+"“ ist jetzt im Archiv.");}
+  catch(err){archFileMsg("Speichern hat nicht geklappt. Bitte noch einmal versuchen.");}
+}
+async function saveFile(fname,data,msgFn){
+  const dl=await dlP;
+  if(dl){try{await dl.save({filename:fname,data});msgFn("Gespeichert.");}catch(e){if(!(e&&e.code==="declined"))msgFn("Speichern hat nicht geklappt. Bitte noch einmal versuchen.");}return;}
+  try{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([data],{type:"application/json"}));a.download=fname;document.body.appendChild(a);a.click();a.remove();msgFn("Gespeichert.");}
+  catch(e){msgFn("Speichern hat nicht geklappt.");}
+}
+function archPrintMsg(t){const el=document.getElementById("archPrintMsg");if(el){el.textContent=t||"";el.hidden=!t;}}
+async function archClick(a,b){
+  if(a==="arch-save"){archMsg="";await doArchive();return;}
+  if(a==="arch-open"){archOpen=b.dataset.id;confirmArchDel=false;render();window.scrollTo({top:0});return;}
+  if(a==="arch-close"){archOpen=null;confirmArchDel=false;render();return;}
+  const e=arch.find(x=>x.id===archOpen);
+  if(a==="arch-leftover"){const d=localLeftover();if(!d)return;
+    const en=withState(d.cfg,d.results,()=>makeEntry("a"+Date.now().toString(36)));
+    try{await putArch(en);try{localStorage.removeItem(LS)}catch(_){ }render();}catch(err){archMsg="Speichern hat nicht geklappt. Bitte noch einmal versuchen.";render();}
+    return;}
+  if(!e)return;
+  if(a==="arch-del"){confirmArchDel=true;render();}
+  else if(a==="arch-del-no"){confirmArchDel=false;render();}
+  else if(a==="arch-del-yes"){confirmArchDel=false;try{await delArch(e.id);archOpen=null;}catch(err){}render();}
+  else if(a==="arch-export"){await saveFile("Turnier_"+(e.date||"Archiv")+".json",JSON.stringify({app:"turnierplaner",version:1,kind:"archiv",exported:new Date().toISOString(),entry:e},null,1),archPrintMsg);}
+  else if(a==="arch-print"){await doPrint(archPrintHTML(e),"Ergebnisse_"+(e.date||"Turnier")+".html",archPrintMsg);}
 }
 
 /* ---------- Aushang zum Drucken ---------- */
@@ -685,16 +884,18 @@ ${P.ko.length?`<li>Unentschieden in der Finalrunde: sofort Siebenmeterschießen 
 <li>Die nächste Mannschaft steht bei Abpfiff bereit.</li></ul>
 </div>
 <script>window.addEventListener("load",function(){setTimeout(function(){window.print()},400)});<\/script>
-</body></html>`;
+<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(function(){});}</script></body></html>`;
 }
-function printMsg(t){const el=document.getElementById("printMsg");el.textContent=t||"";el.hidden=!t;}
-async function doPrint(){
-  const html=printHTML();
-  const fname="Spielplan_Aushang_"+(cfg.date||"Turnier")+".html";
+function printMsg(t){topPrintMsg(t);}
+function topPrintMsg(t){const el=document.getElementById("printMsg");el.textContent=t||"";el.hidden=!t;}
+async function doPrint(htmlIn,fnameIn,msg){
+  const html=htmlIn||printHTML();
+  const fname=fnameIn||"Spielplan_Aushang_"+(cfg.date||"Turnier")+".html";
+  const printMsg=msg||topPrintMsg;
   printMsg("Aushang wird erstellt …");
   const dl=await dlP;
   if(dl){
-    try{await dl.save({filename:fname,data:html});printMsg("Gespeichert. Datei öffnen, dann startet der Druckdialog von selbst (A4 quer).");}
+    try{await dl.save({filename:fname,data:html});printMsg("Gespeichert. Datei öffnen, dann startet der Druckdialog von selbst.");}
     catch(e){printMsg(e&&e.code==="declined"?"":"Speichern hat nicht geklappt. Bitte noch einmal versuchen.");}
     return;
   }
@@ -718,6 +919,7 @@ async function doExport(){
 }
 async function doImport(file){
   let d;try{d=JSON.parse(await file.text());}catch(e){xferMsg("Die Datei ist keine gültige Turnierdatei.");return;}
+  if(d&&d.app==="turnierplaner"&&d.kind==="archiv"){xferMsg("Das ist ein gespeichertes Turnier aus dem Archiv. Bitte im Reiter Archiv importieren.");return;}
   if(!d||d.app!=="turnierplaner"||!d.cfg){xferMsg("Die Datei ist keine Turnierdatei aus diesem Planer.");return;}
   const old=Object.keys(results);
   cfg=Object.assign(JSON.parse(JSON.stringify(DEF)),d.cfg);results=d.results||{};ensureTeams();render();
@@ -739,12 +941,12 @@ document.addEventListener("click",e=>{
   const b=e.target.closest("button");if(!b)return;
   if(b.dataset.tab){tab=b.dataset.tab;try{history.replaceState(null,"","#"+tab)}catch(_){location.hash=tab}render();window.scrollTo({top:0});return;}
   const a=b.dataset.act;
-  if(a==="print"){doPrint();return;}
+  if(a==="print"){doPrint(null,null,topPrintMsg);return;}
+  if(a&&a.startsWith("arch")){archClick(a,b);return;}
   if(a==="export"){doExport();return;}
-  if(a==="reset"){confirmReset=true;render();}
+  if(a==="reset"){confirmReset=true;resetMsg="";render();}
   else if(a==="reset-no"){confirmReset=false;render();}
-  else if(a==="reset-yes"){confirmReset=false;const ids=Object.keys(results);results={};render();
-    if(store==="db"){(async()=>{for(const id of ids){try{await db.doc("results/"+id).delete()}catch(_){setSave("err")}}})();}else saveLocal();}
+  else if(a==="reset-yes"){confirmReset=false;doResetAll();}
   else if(a==="draw"){if(Object.keys(results).length){confirmDraw=true;render();}else doDraw();}
   else if(a==="draw-no"){confirmDraw=false;render();}
   else if(a==="draw-yes"){confirmDraw=false;doDraw();}
@@ -766,6 +968,7 @@ document.addEventListener("input",e=>{
 document.addEventListener("change",e=>{
   const el=e.target;
   if(el.id==="importFile"){const f=el.files&&el.files[0];if(f)doImport(f);el.value="";return;}
+  if(el.id==="archFile"){const f=el.files&&el.files[0];if(f)archImport(f);el.value="";return;}
   if(el.dataset.mid){
     const id=el.dataset.mid,f=el.dataset.f;
     const r=results[id]=Object.assign({h:"",a:""},results[id]);
@@ -794,7 +997,7 @@ setInterval(()=>{if(tab==="plan"&&!(document.activeElement&&document.activeEleme
 (async()=>{
   let api=null;
   try{api=window.claude&&window.claude.use?await window.claude.use("db"):null;}catch(e){api=null}
-  if(!api){store="local";loadLocal();render();return;}
+  if(!api){store="local";loadLocal();loadArchLocal();render();return;}
   db=api;store="loading";render();
   let gotCfg=false,gotRes=false;
   const timer=setTimeout(()=>{if(!(gotCfg&&gotRes)){store="offline";renderChips();}},10000);
@@ -805,6 +1008,10 @@ setInterval(()=>{if(tab==="plan"&&!(document.activeElement&&document.activeEleme
     if(!s.metadata||!s.metadata.fromCache){gotCfg=true;}
     if(store==="db")render();else ready();
   },()=>{clearTimeout(timer);store="offline";render();});
+  db.collection("archiv").onSnapshot(s=>{
+    const list=[];s.docs.forEach(d=>{if(d.exists){const v=Object.assign({},d.data());v.id=d.id;list.push(v);}});
+    arch=list;if(tab==="archiv"||tab==="finalrunde")render();
+  },()=>{});
   db.collection("results").onSnapshot(s=>{
     const r={};s.docs.forEach(d=>{if(d.exists)r[d.id]=Object.assign({},d.data())});
     const f=document.activeElement;
