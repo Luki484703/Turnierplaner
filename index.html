@@ -97,10 +97,15 @@ tr.q td:first-child{box-shadow:inset 3px 0 0 var(--pitch)}
 .podium div{border-radius:8px;padding:12px;background:var(--soft)}
 .podium b{display:block;font-family:var(--display);font-size:1.6rem}
 /* Formulare */
-.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px 16px}
-label.f{display:grid;gap:4px;font-size:.8rem;font-weight:600;color:var(--muted)}
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px 16px;align-items:start}
+.form.five{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+label.f{display:grid;gap:4px;font-size:.8rem;font-weight:600;color:var(--muted);align-content:start;min-width:0}
+label.f .hint{font-weight:400;font-size:.78rem;color:var(--muted)}
+label.f.hl{background:var(--soft);border-radius:8px;padding:8px;margin:-8px}
 label.f.chk{display:flex;align-items:center;gap:8px;color:var(--fg);font-size:.9rem;font-weight:500;padding-top:18px}
-input[type=text],input[type=number],input[type=time],input[type=date],select{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 9px;width:100%;min-width:0}
+input[type=text],input[type=number],input[type=time],input[type=date],select{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 9px;width:100%;min-width:0;height:40px;box-sizing:border-box;margin:0}
+input[type=time],input[type=date]{-webkit-appearance:none;appearance:none;display:block;text-align:left}
+input::-webkit-date-and-time-value{text-align:left}
 .btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 button.b{font:inherit;font-weight:600;border-radius:6px;padding:8px 14px;cursor:pointer;border:1px solid var(--pitch);background:var(--pitch);color:var(--pitch-fg)}
 button.b.sec{background:transparent;color:var(--pitch)}
@@ -617,7 +622,7 @@ function viewTeams(){
 }
 function viewSetup(){
   const AUTO=new Set(["groups","setupMin","gameMin","changeMin","breakMin","koGameMin","finalMin"]);
-  const n=(k,l,lo,hi,suf)=>{if(k==="setupMin"&&kickoff()!=null)return `<label class="f">${l}<input type="number" id="c-setupMin" value="${kickoff()-toMin(cfg.start)}" disabled><span class="muted small" style="font-weight:400">aus dem Anpfiff berechnet</span></label>`;const dis=cfg.auto&&AUTO.has(k);return `<label class="f">${l}<input type="number" id="c-${k}" data-cfg="${k}" min="${lo}" max="${hi}" value="${esc(cfg[k])}" ${dis?"disabled":""}>${dis?`<span class="muted small" style="font-weight:400">automatisch</span>`:suf?`<span class="muted small" style="font-weight:400">${suf}</span>`:""}</label>`;};
+  const n=(k,l,lo,hi,suf)=>{if(k==="rebuildMin"){const on=P.Q>=4;return `<label class="f hl">${l}<input type="number" id="c-rebuildMin" data-cfg="rebuildMin" min="0" max="60" value="${esc(cfg.rebuildMin??10)}" ${on?"":"disabled"}><span class="hint">${on?"Umbaupause nach den Halbfinals":"gilt nur, wenn es Halbfinals gibt"}</span></label>`;}if(k==="setupMin"&&kickoff()!=null)return `<label class="f">${l}<input type="number" id="c-setupMin" value="${kickoff()-toMin(cfg.start)}" disabled><span class="hint">aus dem Anpfiff berechnet</span></label>`;const dis=cfg.auto&&AUTO.has(k);return `<label class="f">${l}<input type="number" id="c-${k}" data-cfg="${k}" min="${lo}" max="${hi}" value="${esc(cfg[k])}" ${dis?"disabled":""}>${dis?`<span class="hint">automatisch</span>`:suf?`<span class="hint">${suf}</span>`:""}</label>`;};
   const koName={QF:"Viertelfinale",SF:"Halbfinale",F:"Finale",NONE:"keine Finalrunde"};
   const AV=cfg.auto?autoVariants():null;
   const autoTxt=cfg.auto&&autoInfo?(autoInfo.tooLong?`<div class="note warn"><b>Achtung:</b> Selbst mit 5 Minuten Spielzeit reicht die Zeit nicht. Mehr Zeit, eine zusätzliche Halle oder weniger Teams helfen. Aktuell endet der Plan um ${fmt(P.planEnd)} Uhr.</div>`:
@@ -634,11 +639,11 @@ function viewSetup(){
     <label class="f chk" style="padding-top:0"><input type="checkbox" id="c-auto" data-cfg="auto" ${cfg.auto?"checked":""}> Alles aus Teamzahl und Zeitfenster berechnen</label>
     <p class="muted small">Eingeben musst du nur Beginn, Ende, Anzahl Mannschaften und Hallen. Gruppen, Spielzeiten, Aufbau und Pausen werden so gewählt, dass alles bis zum Ende passt. Den Anpfiff des ersten Spiels kannst du oben beim Turnier festlegen, Siegerehrung und Aufräumen unten bei den Zeiten. Die Varianten rechnen sich dann sofort neu. Zum Feinjustieren den Haken entfernen, dann sind alle Werte frei änderbar.</p>
     ${autoTxt}</div>
-  <div class="card stack"><h2>Turnier</h2><div class="form">
+  <div class="card stack"><h2>Turnier</h2><div class="form five">
     <label class="f">Name<input type="text" id="c-title" data-cfg="title" value="${esc(cfg.title)}"></label>
     <label class="f">Datum<input type="date" id="c-date" data-cfg="date" value="${esc(cfg.date)}"></label>
     <label class="f">Beginn<input type="time" id="c-start" data-cfg="start" value="${esc(cfg.start)}"></label>
-    <label class="f">Anpfiff erstes Spiel<input type="time" id="c-kickoff" data-cfg="kickoff" value="${esc(cfg.kickoff||"")}"><span class="muted small" style="font-weight:400">${cfg.kickoff?"alles danach richtet sich danach":"leer lassen = Beginn plus Aufbau"}</span></label>
+    <label class="f">Anpfiff erstes Spiel<input type="time" id="c-kickoff" data-cfg="kickoff" value="${esc(cfg.kickoff||"")}"><span class="hint">${cfg.kickoff?"Spielplan beginnt hier":"leer lassen = Beginn plus Aufbau"}</span></label>
     <label class="f">Ende inkl. Aufräumen<input type="time" id="c-end" data-cfg="end" value="${esc(cfg.end)}"></label>
   </div></div>
   <div class="card stack"><h2>Mannschaften und Gruppen</h2><div class="form">
@@ -653,9 +658,9 @@ function viewSetup(){
     ${n("gameMin","Spielzeit Vorrunde",1,60)}
     ${n("changeMin","Wechselzeit zwischen Spielen",0,30)}
     ${n("breakMin","Pause nach der Vorrunde",0,120)}
-    ${n("koGameMin","Spielzeit Finalrunde",1,60)}
+    ${n("koGameMin","Spielzeit Halbf. / Platz 3",1,60)}
+    ${n("rebuildMin","Umbau vor Platz 3/Finale",0,60)}
     ${n("finalMin","Spielzeit Finale",1,60)}
-    ${n("rebuildMin","Umbau vor Platz 3 und Finale",0,60,"nach den Halbfinals")}
     ${n("awardMin","Siegerehrung",0,60)}
     ${n("cleanupMin","Aufräumen",0,90)}
   </div></div>
