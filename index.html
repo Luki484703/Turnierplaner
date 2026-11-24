@@ -166,7 +166,7 @@ const DEF={
   title:"Fußballturnier Jg. 8–10", date:"2026-11-20", start:"08:00", end:"11:15",
   setupMin:40, numTeams:5, groups:1, halls:2, gameMin:12, changeMin:5, breakMin:10,
   auto:false, koMode:"F", ko:"F", third:true, koGameMin:12, finalMin:15, awardMin:10, cleanupMin:15,
-  playersTotal:8, playersField:5, seed:"anmeldung-2026-11-20a",
+  playersTotal:8, playersField:5, rebuildMin:10, seed:"anmeldung-2026-11-20a",
   teams:[]
 };
 let cfg=JSON.parse(JSON.stringify(DEF));
@@ -227,7 +227,7 @@ const koTxt=v=>v.Q===8?"Viertelfinale, Halbfinale"+(v.p3?", Spiel um Platz 3":""
 function autoVariants(){
   ensureTeams();
   const N=cfg.teams.length,H=int(cfg.halls,2,1,4),E=toMin(cfg.end);
-  const key=[N,H,cfg.start,cfg.end,!!cfg.third,kickoff()||"",cfg.awardMin,cfg.cleanupMin].join("|");
+  const key=[N,H,cfg.start,cfg.end,!!cfg.third,kickoff()||"",cfg.awardMin,cfg.cleanupMin,cfg.rebuildMin].join("|");
   if(autoCache&&autoCache.key===key)return autoCache;
   const T=E-toMin(cfg.start);
   if(!kickoff())cfg.setupMin=T>=180?20:T>=120?15:10;
@@ -371,6 +371,9 @@ function buildRaw(){
   }else if(Q===4){
     addRound(pairs.map((p,i)=>({id:"HF"+(i+1),label:"Halbfinale "+(i+1),round:"HF",home:{seed:p[0]},away:{seed:p[1]}})),koGame);
   }
+  // Umbaupause nach den Halbfinals, bevor Spiel um Platz 3 und Finale beginnen
+  const rebuild=Q>=4?int(cfg.rebuildMin,10,0,60):0;
+  t+=rebuild;const finStart=t;
   if(Q>=4&&cfg.third)add("P3","Spiel um Platz 3","P3",{lose:"HF1"},{lose:"HF2"},koGame);
   if(Q>=4)add("F","Finale","F",{win:"HF1"},{win:"HF2"},fin);
   else if(Q===2){
@@ -381,7 +384,7 @@ function buildRaw(){
   const awardStart=Math.ceil((koEnd+5)/5)*5;
   const award=int(cfg.awardMin,10,0,60),clean=int(cfg.cleanupMin,20,0,90);
   const cleanStart=awardStart+award,planEnd=cleanStart+clean;
-  return {N,G,H,Q,Qwant,pooledMode,groups,matches,ko,seeds,t0,groupEnd,koStart,koEnd,awardStart,cleanStart,planEnd,game,chg,hallSlots};
+  return {N,G,H,Q,Qwant,pooledMode,groups,matches,ko,seeds,t0,rebuild,finStart,groupEnd,koStart,koEnd,awardStart,cleanStart,planEnd,game,chg,hallSlots};
 }
 
 /* ---------- Tabellen und Auflösung ---------- */
@@ -556,7 +559,7 @@ function viewPlan(){
   }
   if(P.ko.length){
     out.push(`<div class="sep"><span class="time">${fmt(P.groupEnd)}</span><span>Vorrunde vorbei. Tabellen prüfen, Finalrunde ausrufen${H>1&&!P.ko.some(m=>m.hall>0)?", Ausgeschiedene räumen Halle 2"+(H>2?" bis "+H:"")+" auf":""}</span></div>`);
-    [...new Set(P.ko.map(m=>m.start))].forEach(st=>{const ms=P.ko.filter(m=>m.start===st);const cells=[];
+    [...new Set(P.ko.map(m=>m.start))].forEach(st=>{if(P.rebuild&&st===P.finStart)out.push(`<div class="sep"><span class="time">${fmt(st-P.rebuild)}</span><span>Umbau für ${P.ko.some(m=>m.round==="P3")?"Spiel um Platz 3 und Finale":"das Finale"} (${P.rebuild} Min.)</span></div>`);const ms=P.ko.filter(m=>m.start===st);const cells=[];
       for(let h=0;h<H;h++){const m=ms.find(x=>x.hall===h);cells.push(m?matchCard(m,true):`<div class="empty-hall"></div>`);}
       out.push(`<div class="row${ms.some(m=>isNow(m.start,m.dur))?" now":""}"><span class="time">${fmt(st)}</span>${cells.join("")}</div>`);});
   }
@@ -652,6 +655,7 @@ function viewSetup(){
     ${n("breakMin","Pause nach der Vorrunde",0,120)}
     ${n("koGameMin","Spielzeit Finalrunde",1,60)}
     ${n("finalMin","Spielzeit Finale",1,60)}
+    ${n("rebuildMin","Umbau vor Platz 3 und Finale",0,60,"nach den Halbfinals")}
     ${n("awardMin","Siegerehrung",0,60)}
     ${n("cleanupMin","Aufräumen",0,90)}
   </div></div>
