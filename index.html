@@ -775,7 +775,7 @@ ${ko.length?`<h2>Finalrunde</h2><table>${rows(ko)}</table>`:""}
 <h2>Tabellen</h2>${tabs}
 <h2>Vorrunde</h2><table>${rows(grp)}</table>
 <h2>Mannschaften</h2><div class="teams">${(s.teams||[]).map(t=>`<p><b>${esc(t.name)}</b>${t.klasse?" ("+esc(t.klasse)+")":""}${t.captain?", Kapitän/in "+esc(t.captain):""}${t.players.length?"<br>"+t.players.map(esc).join(", "):""}</p>`).join("")}</div>
-<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},300)});<\/script><script>if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(function(){});}</script></body></html>`;
+<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},300)});<\/script></body></html>`;
 }
 function archFileMsg(t){const el=document.getElementById("archFileMsg");if(el){el.textContent=t||"";el.hidden=!t;}}
 async function archImport(file){
@@ -884,7 +884,7 @@ ${P.ko.length?`<li>Unentschieden in der Finalrunde: sofort Siebenmeterschießen 
 <li>Die nächste Mannschaft steht bei Abpfiff bereit.</li></ul>
 </div>
 <script>window.addEventListener("load",function(){setTimeout(function(){window.print()},400)});<\/script>
-<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(function(){});}</script></body></html>`;
+</body></html>`;
 }
 function printMsg(t){topPrintMsg(t);}
 function topPrintMsg(t){const el=document.getElementById("printMsg");el.textContent=t||"";el.hidden=!t;}
