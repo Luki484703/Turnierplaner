@@ -134,6 +134,12 @@ ul.rules{margin:0;padding-left:18px;display:grid;gap:4px}
 details.tm{border-top:1px solid var(--line);padding-top:8px}
 details.tm summary{cursor:pointer;font-weight:600}
 .big{font-size:1rem;padding:11px 18px}
+.vars{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px}
+.var{font:inherit;text-align:left;cursor:pointer;color:var(--fg);display:grid;gap:4px;width:100%}
+.var:hover{border-color:var(--pitch)}
+.var.on{border:2px solid var(--pitch);background:var(--soft)}
+.var .vh{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.var .chip.on{background:var(--pitch);color:var(--pitch-fg)}
 @media (prefers-reduced-motion:no-preference){.match{transition:background .2s}}
 </style>
 
@@ -213,47 +219,59 @@ function spread(list){
 }
 /* Automatik: aus Teamzahl, Hallen und Zeitfenster alles andere berechnen */
 let autoInfo=null;
-function autoPlan(){
+let autoCache=null;
+const koTxt=v=>v.Q===8?"Viertelfinale, Halbfinale"+(v.p3?", Spiel um Platz 3":"")+", Finale":v.Q===4?"Halbfinale"+(v.p3?", Spiel um Platz 3":"")+", Finale":v.Q===2?(v.p3?"Spiel um Platz 3 und Finale":"nur Finale"):"keine Finalrunde, die Tabelle entscheidet";
+/* Alle spielbaren Varianten für Teamzahl, Hallen und Zeitfenster, beste zuerst */
+function autoVariants(){
   ensureTeams();
-  const N=cfg.teams.length,H=int(cfg.halls,2,1,4);
-  const T=toMin(cfg.end)-toMin(cfg.start);
+  const N=cfg.teams.length,H=int(cfg.halls,2,1,4),E=toMin(cfg.end);
+  const key=[N,H,cfg.start,cfg.end,!!cfg.third].join("|");
+  if(autoCache&&autoCache.key===key)return autoCache;
+  const T=E-toMin(cfg.start);
   cfg.setupMin=T>=180?20:T>=120?15:10;
   cfg.cleanupMin=T>=180?20:T>=120?15:10;
   cfg.awardMin=T>=120?10:5;
   cfg.changeMin=2;
-  const Qs=cfg.koMode==="auto"?[8,4,2].filter(q=>q<=Math.floor(N*0.7)):[{QF:8,SF:4,F:2,NONE:0}[cfg.koMode]??4];
-  if(!Qs.length)Qs.push(0);
   const maxG=Math.max(1,Math.floor(N/3));
-  const Gs=[];for(let g=1;g<=maxG;g++)Gs.push(g);
-  Gs.sort((a,b)=>((a%H===0||a>=H)?0:1)-((b%H===0||b>=H)?0:1)||a-b);
   const tryOne=(Q,G,g)=>{
     cfg.ko=Q===8?"QF":Q===4?"SF":Q===2?"F":"NONE";cfg.groups=G;
     cfg.breakMin=Q?10:5;cfg.gameMin=g;cfg.koGameMin=g;cfg.finalMin=Math.min(g+2,15);
     return buildRaw();
   };
-  const fits=(Q,G)=>{const min=Math.floor(N/G);return !Q||(Q%G===0?Q/G<min:Q<=G*(min-1)+G);};
-  let best=null;
-  const maxFit=(Q,G,minG)=>{for(let g=15;g>=minG;g--){if(tryOne(Q,G,g).planEnd<=toMin(cfg.end))return g;}return 0;};
-  const tiers=[Gs.filter(G=>G>=2&&N%G===0),[1],Gs.filter(G=>G>=2&&N%G!==0)];
-  outer: for(const tier of tiers){
-    for(const Q of Qs){
-      for(const minG of [7,6]){
-        for(const G of tier){
-          if(!fits(Q,G))continue;
-          const g=maxFit(Q,G,minG);
-          if(g){best={Q,G,g};break outer;}
-        }
+  const fits=(Q,G)=>{const min=Math.floor(N/G);if(Q===0)return G===1;if(Q<G)return false;return Q%G===0?Q/G<min:Q<=G*(min-1)+G;};
+  const list=[],seen=new Set();
+  for(const Q of [8,4,2,0]){
+    if(Q>Math.floor(N*0.7))continue;
+    for(let G=1;G<=maxG;G++){
+      if(!fits(Q,G))continue;
+      for(let g=15;g>=5;g--){
+        const r=tryOne(Q,G,g);
+        if(r.planEnd>E)continue;
+        const sz=r.groups.map(x=>x.teams.length);
+        const v={id:r.Q+"-"+G,Q:r.Q,G,g,sizes:sz,minGames:Math.min(...sz)-1,maxGames:Math.max(...sz)-1,
+          total:r.matches.length+r.ko.length,end:r.planEnd,p3:r.ko.some(m=>m.round==="P3")};
+        if(seen.has(v.id))break;seen.add(v.id);
+        // Bewertung: Spielminuten pro Team in der Vorrunde, Finalrunde, Spiel um Platz 3, nicht zu kurze Spiele
+        v.score=v.minGames*g+({8:16,4:18,2:8,0:0}[v.Q]||0)+(v.p3?6:0)-(g<7?12:0)-(Math.min(...sz)!==Math.max(...sz)?2:0)-(v.minGames<2?20:0);
+        list.push(v);break;
       }
     }
   }
-  if(!best){for(const Q of Qs){for(const G of Gs){if(!fits(Q,G))continue;const g=maxFit(Q,G,5);if(g){best={Q,G,g};break;}}if(best)break;}}
-  if(!best){ // passt nicht: Variante mit dem frühesten Ende nehmen und warnen
+  list.sort((a,b)=>b.score-a.score||b.g-a.g);
+  let fallback=null;
+  if(!list.length){ // passt nicht: Variante mit dem frühesten Ende nehmen und warnen
     let end=Infinity;
-    for(const Q of Qs.concat(Qs.includes(0)?[]:[0]))for(const G of Gs){if(!fits(Q,G))continue;const e=tryOne(Q,G,5).planEnd;if(e<end){end=e;best={Q,G,g:5,tooLong:e>toMin(cfg.end)};}}
-    if(!best)best={Q:0,G:1,g:5,tooLong:true};
+    for(const Q of [4,2,0])for(let G=1;G<=maxG;G++){if(!fits(Q,G))continue;const e=tryOne(Q,G,5).planEnd;if(e<end){end=e;fallback={Q,G,g:5,tooLong:true};}}
+    if(!fallback)fallback={Q:0,G:1,g:5,tooLong:true};
   }
-  autoInfo=best;
-  return tryOne(best.Q,best.G,best.g);
+  autoCache={key,list,fallback,tryOne};
+  return autoCache;
+}
+function autoPlan(){
+  const A=autoVariants();
+  const pick=A.list.find(v=>v.id===cfg.autoPick)||A.list[0]||A.fallback;
+  autoInfo=pick;
+  return A.tryOne(pick.Q,pick.G,pick.g);
 }
 function build(){if(!cfg.auto&&cfg.koMode&&cfg.koMode!=="auto")cfg.ko=cfg.koMode;return cfg.auto?autoPlan():buildRaw();}
 function buildRaw(){
@@ -313,8 +331,8 @@ function buildRaw(){
     seeds.length=Q;
   }
   // Spiel um Platz 3 ohne Halbfinale: 3. gegen 4. der Vorrunde
-  const p3seed=Q===2&&!!cfg.third&&G===1&&groups[0].teams.length>=4;
-  if(p3seed)seeds.push({place:3,group:groups[0].name},{place:4,group:groups[0].name});
+  const p3seed=Q===2&&!!cfg.third&&((G===1&&groups[0].teams.length>=4)||(G===2&&groups.every(g=>g.teams.length>=2)));
+  if(p3seed){if(G===1)seeds.push({place:3,group:groups[0].name},{place:4,group:groups[0].name});else seeds.push({place:2,group:groups[0].name},{place:2,group:groups[1].name});}
   const order={8:[[1,8],[4,5],[2,7],[3,6]],4:[[1,4],[2,3]],2:[[1,2]]}[Q]||[];
   const pairs=order.map(([x,y])=>[x-1,y-1]);
   // gleiche Gruppe in der ersten K.-o.-Runde vermeiden
@@ -333,12 +351,14 @@ function buildRaw(){
   let t=Math.ceil((groupEnd+int(cfg.breakMin,10,0,120))/5)*5;
   const koStart=t;
   const add=(id,label,round,home,away,d)=>{ko.push({id,label,round,kind:"K",hall:0,home,away,start:t,dur:d});t+=d+chg;};
+  // Viertel- und Halbfinals laufen bei mehreren Hallen gleichzeitig (Halle 1 und 2)
+  const KH=Math.min(H,2);
+  const addRound=(list,d)=>{for(let i=0;i<list.length;i+=KH){list.slice(i,i+KH).forEach((m,h)=>ko.push(Object.assign({kind:"K",hall:h,start:t,dur:d},m)));t+=d+chg;}};
   if(Q===8){
-    pairs.forEach((p,i)=>add("VF"+(i+1),"Viertelfinale "+(i+1),"VF",{seed:p[0]},{seed:p[1]},koGame));
-    add("HF1","Halbfinale 1","HF",{win:"VF1"},{win:"VF2"},koGame);
-    add("HF2","Halbfinale 2","HF",{win:"VF3"},{win:"VF4"},koGame);
+    addRound(pairs.map((p,i)=>({id:"VF"+(i+1),label:"Viertelfinale "+(i+1),round:"VF",home:{seed:p[0]},away:{seed:p[1]}})),koGame);
+    addRound([{id:"HF1",label:"Halbfinale 1",round:"HF",home:{win:"VF1"},away:{win:"VF2"}},{id:"HF2",label:"Halbfinale 2",round:"HF",home:{win:"VF3"},away:{win:"VF4"}}],koGame);
   }else if(Q===4){
-    pairs.forEach((p,i)=>add("HF"+(i+1),"Halbfinale "+(i+1),"HF",{seed:p[0]},{seed:p[1]},koGame));
+    addRound(pairs.map((p,i)=>({id:"HF"+(i+1),label:"Halbfinale "+(i+1),round:"HF",home:{seed:p[0]},away:{seed:p[1]}})),koGame);
   }
   if(Q>=4&&cfg.third)add("P3","Spiel um Platz 3","P3",{lose:"HF1"},{lose:"HF2"},koGame);
   if(Q>=4)add("F","Finale","F",{win:"HF1"},{win:"HF2"},fin);
@@ -565,7 +585,7 @@ function viewKo(){
   if(f&&f.result){
     pod=`<div class="card stack"><h2>Siegerehrung</h2><div class="podium"><div><span class="muted small">1. Platz</span><b>${esc(teamName(f.result.w))}</b></div><div><span class="muted small">2. Platz</span><b>${esc(teamName(f.result.l))}</b></div>${third&&third.result?`<div><span class="muted small">3. Platz</span><b>${esc(teamName(third.result.w))}</b></div><div><span class="muted small">4. Platz</span><b>${esc(teamName(third.result.l))}</b></div>`:""}</div>${archBox()}</div>`;
   }
-  return `<div class="stack">${pod}<p class="muted small">${P.ko.some(m=>m.hall>0)?"Das Finale läuft in Halle 1, das Spiel um Platz 3 gleichzeitig in Halle 2.":"Alle Spiele der Finalrunde laufen in Halle 1."} Die Paarungen füllen sich, sobald eine Gruppe fertig gespielt ist und Sieger feststehen. Unentschieden: sofort Siebenmeterschießen mit je 3 Schützen, danach im Wechsel bis zur Entscheidung.</p><div class="bracket">${cols}</div>${p3?`<div style="max-width:360px">${matchCard(p3,false)}</div>`:""}</div>`;
+  return `<div class="stack">${pod}<p class="muted small">${P.ko.some(m=>m.hall>0)?(P.ko.some(m=>m.round==="VF")?"Viertel- und Halbfinals":"Die Halbfinals")+" laufen gleichzeitig in Halle 1 und 2, "+(P.ko.some(m=>m.round==="P3")?"Spiel um Platz 3 und Finale":"das Finale")+" danach in Halle 1.":"Alle Spiele der Finalrunde laufen in Halle 1."} Die Paarungen füllen sich, sobald eine Gruppe fertig gespielt ist und Sieger feststehen. Unentschieden: sofort Siebenmeterschießen mit je 3 Schützen, danach im Wechsel bis zur Entscheidung.</p><div class="bracket">${cols}</div>${p3?`<div style="max-width:360px">${matchCard(p3,false)}</div>`:""}</div>`;
 }
 function viewTeams(){
   const gOf={};P.groups.forEach(g=>g.teams.forEach(id=>gOf[id]=g.name));
@@ -585,7 +605,15 @@ function viewSetup(){
   const AUTO=new Set(["groups","setupMin","gameMin","changeMin","breakMin","koGameMin","finalMin","awardMin","cleanupMin"]);
   const n=(k,l,lo,hi,suf)=>{const dis=cfg.auto&&AUTO.has(k);return `<label class="f">${l}<input type="number" id="c-${k}" data-cfg="${k}" min="${lo}" max="${hi}" value="${esc(cfg[k])}" ${dis?"disabled":""}>${dis?`<span class="muted small" style="font-weight:400">automatisch</span>`:suf?`<span class="muted small" style="font-weight:400">${suf}</span>`:""}</label>`;};
   const koName={QF:"Viertelfinale",SF:"Halbfinale",F:"Finale",NONE:"keine Finalrunde"};
-  const autoTxt=cfg.auto&&autoInfo?`<div class="note">${autoInfo.tooLong?"<b>Achtung:</b> Selbst mit 5 Minuten Spielzeit reicht die Zeit nicht ganz. Mehr Zeit, eine zusätzliche Halle oder weniger Teams helfen. ":""}Automatisch berechnet: ${P.G} ${P.G===1?"Gruppe":"Gruppen"} (${P.groups.map(g=>g.teams.length).join(", ")} Teams), ${cfg.gameMin} Min. Spielzeit, ${cfg.ko!=="NONE"?"Finale "+cfg.finalMin+" Min., ":""}${cfg.ko==="NONE"?"ohne Finalrunde, die Vorrunde entscheidet":"Finalrunde ab "+koName[cfg.ko]}. Jedes Team spielt in der Vorrunde ${Math.min(...P.groups.map(g=>g.teams.length))-1}${Math.min(...P.groups.map(g=>g.teams.length))!==Math.max(...P.groups.map(g=>g.teams.length))?"–"+(Math.max(...P.groups.map(g=>g.teams.length))-1):""} Mal. Ende ${fmt(P.planEnd)} Uhr.</div>`:"";
+  const AV=cfg.auto?autoVariants():null;
+  const autoTxt=cfg.auto&&autoInfo?(autoInfo.tooLong?`<div class="note warn"><b>Achtung:</b> Selbst mit 5 Minuten Spielzeit reicht die Zeit nicht. Mehr Zeit, eine zusätzliche Halle oder weniger Teams helfen. Aktuell endet der Plan um ${fmt(P.planEnd)} Uhr.</div>`:
+    `<div class="stack"><h3>Spielvarianten, die in die Zeit passen</h3><p class="muted small">Tippe eine Variante an. Spielplan, Tabellen und Finalrunde passen sich sofort an. Am besten vor dem Turnier wählen, denn ein Wechsel stellt die Gruppen neu zusammen.</p>
+    <div class="vars">${AV.list.slice(0,6).map((v,i)=>`<button class="card var${v.id===autoInfo.id?" on":""}" data-act="pick" data-v="${v.id}" aria-pressed="${v.id===autoInfo.id}">
+      <span class="vh"><b>${v.G===1?"Jeder gegen jeden":v.G+" Gruppen ("+v.sizes.join(", ")+" Teams)"}</b>${i===0?`<span class="chip">Empfohlen</span>`:""}${v.id===autoInfo.id?`<span class="chip on">Gewählt</span>`:""}</span>
+      <span>${v.g} Min. pro Spiel · jedes Team ${v.minGames}${v.maxGames!==v.minGames?"–"+v.maxGames:""} Vorrundenspiele</span>
+      <span>${koTxt(v)}</span>
+      <span class="muted small">${v.total} Spiele · fertig um ${fmt(v.end)} Uhr</span></button>`).join("")}</div>
+    ${!cfg.third?`<p class="muted small">Ein Spiel um Platz 3 gibt es erst, wenn unten bei „Finalrunde“ der Haken gesetzt ist.</p>`:""}</div>`):"";
   const maxG=Math.max(1,Math.floor(cfg.numTeams/2));
   return `<div class="stack">${warnBox()}
   <div class="card stack"><h2>Automatische Planung</h2>
@@ -616,7 +644,7 @@ function viewSetup(){
     ${n("cleanupMin","Aufräumen",0,90)}
   </div></div>
   <div class="card stack"><h2>Finalrunde</h2><div class="form">
-    <label class="f">Finalrunde ab<select id="c-koMode" data-cfg="koMode">
+    <label class="f">Finalrunde ab<select id="c-koMode" data-cfg="koMode" ${cfg.auto?"disabled":""}>
       ${[["auto","Automatisch"],["QF","Viertelfinale (8 Teams weiter)"],["SF","Halbfinale (4 Teams weiter)"],["F","Finale (2 Teams weiter)"],["NONE","Keine Finalrunde"]].map(([v,l])=>`<option value="${v}" ${(cfg.koMode||"auto")===v?"selected":""}>${l}</option>`).join("")}
     </select></label>
     <label class="f chk"><input type="checkbox" id="c-third" data-cfg="third" ${cfg.third?"checked":""}> Spiel um Platz 3</label>
@@ -869,7 +897,7 @@ th{background:#e6f1ea;font-size:10pt}
 <div class="page">
 <h1>${esc(cfg.title)}</h1>
 <div class="sub">${dateTxt} · ${esc(cfg.start)}–${esc(cfg.end)} Uhr · ${P.N} Mannschaften</div>
-<div class="flow"><span><b>${cfg.start}</b> Aufbau und Begrüßung</span><span><b>${fmt(P.t0)}</b> Vorrunde</span>${P.ko.length?`<span><b>${fmt(P.koStart)}</b> ${cfg.ko==="F"&&P.ko.some(m=>m.round==="P3")?"Spiel um Platz 3 und Finale":(koName[cfg.ko]||"Finalrunde")} in Halle 1${P.ko.some(m=>m.hall>0)?", Spiel um Platz 3 in Halle 2":""}</span>`:""}<span><b>${fmt(P.awardStart)}</b> Siegerehrung</span><span><b>${fmt(P.cleanStart)}</b> Aufräumen</span><span>Spielzeit ${P.game} Min.${P.ko.length?`, Finale ${cfg.finalMin} Min.`:""}</span></div>
+<div class="flow"><span><b>${cfg.start}</b> Aufbau und Begrüßung</span><span><b>${fmt(P.t0)}</b> Vorrunde</span>${P.ko.length?`<span><b>${fmt(P.koStart)}</b> ${cfg.ko==="F"&&P.ko.some(m=>m.round==="P3")?"Spiel um Platz 3 und Finale":(koName[cfg.ko]||"Finalrunde")} ${P.ko.some(m=>m.hall>0)?" (Halbfinals gleichzeitig in Halle 1 und 2)":" in Halle 1"}</span>`:""}<span><b>${fmt(P.awardStart)}</b> Siegerehrung</span><span><b>${fmt(P.cleanStart)}</b> Aufräumen</span><span>Spielzeit ${P.game} Min.${P.ko.length?`, Finale ${cfg.finalMin} Min.`:""}</span></div>
 <h2>Gruppen</h2><div class="groups">${groups}</div>
 <h2>Vorrunde</h2>
 <table><thead><tr><th>Zeit</th>${hallHead}</tr></thead><tbody>${rows}</tbody></table>
@@ -944,6 +972,7 @@ document.addEventListener("click",e=>{
   if(a==="print"){doPrint(null,null,topPrintMsg);return;}
   if(a&&a.startsWith("arch")){archClick(a,b);return;}
   if(a==="export"){doExport();return;}
+  if(a==="pick"){cfg.autoPick=b.dataset.v;saveCfg();render();return;}
   if(a==="reset"){confirmReset=true;resetMsg="";render();}
   else if(a==="reset-no"){confirmReset=false;render();}
   else if(a==="reset-yes"){confirmReset=false;doResetAll();}
@@ -979,7 +1008,7 @@ document.addEventListener("change",e=>{
   }
   if(el.dataset.cfg){
     const k=el.dataset.cfg;
-    if(el.type==="checkbox")cfg[k]=el.checked;
+    if(el.type==="checkbox"){cfg[k]=el.checked;if(k==="auto"&&!el.checked)cfg.koMode=cfg.ko;}
     else if(el.type==="number"){cfg[k]=parseInt(el.value,10);if(isNaN(cfg[k]))cfg[k]=DEF[k];}
     else cfg[k]=el.value;
     if(k==="numTeams"||k==="playersTotal")ensureTeams();
