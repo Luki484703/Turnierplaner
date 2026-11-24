@@ -232,7 +232,7 @@ const koTxt=v=>v.Q===8?"Viertelfinale, Halbfinale"+(v.p3?", Spiel um Platz 3":""
 function autoVariants(){
   ensureTeams();
   const N=cfg.teams.length,H=int(cfg.halls,2,1,4),E=toMin(cfg.end);
-  const key=[N,H,cfg.start,cfg.end,!!cfg.third,kickoff()||"",cfg.awardMin,cfg.cleanupMin,cfg.rebuildMin].join("|");
+  const key=[N,H,cfg.start,cfg.end,!!cfg.third,kickoff()||"",cfg.awardMin,cfg.cleanupMin,cfg.rebuildMin,cfg.breakMin].join("|");
   if(autoCache&&autoCache.key===key)return autoCache;
   const T=E-toMin(cfg.start);
   if(!kickoff())cfg.setupMin=T>=180?20:T>=120?15:10;
@@ -240,7 +240,7 @@ function autoVariants(){
   const maxG=Math.max(1,Math.floor(N/3));
   const tryOne=(Q,G,g)=>{
     cfg.ko=Q===8?"QF":Q===4?"SF":Q===2?"F":"NONE";cfg.groups=G;
-    cfg.breakMin=Q?10:5;cfg.gameMin=g;cfg.koGameMin=g;cfg.finalMin=Math.min(g+2,15);
+    cfg.gameMin=g;cfg.koGameMin=g;cfg.finalMin=Math.min(g+2,15);
     return buildRaw();
   };
   const fits=(Q,G)=>{const min=Math.floor(N/G);if(Q===0)return G===1;if(Q<G)return false;return Q%G===0?Q/G<min:Q<=G*(min-1)+G;};
@@ -576,7 +576,7 @@ function viewPlan(){
 }
 function warnBox(){
   const w=[];const diff=toMin(cfg.end)-P.planEnd;
-  if(diff<0)w.push(`Der Plan endet um ${fmt(P.planEnd)} und damit ${-diff} Minuten nach ${cfg.end}. Kürzere Spielzeit, weniger Wechselzeit oder Finalrunde erst ab Halbfinale helfen.`);
+  if(diff<0)w.push(`Der Plan endet um ${fmt(P.planEnd)} und damit ${-diff} Minuten nach ${cfg.end}. ${cfg.auto?"Kürzere Pausen, weniger Umbau- oder Aufräumzeit, ein früherer Anpfiff oder ein späteres Ende helfen.":"Kürzere Spielzeit, weniger Wechselzeit oder Finalrunde erst ab Halbfinale helfen."}`);
   const sz=P.groups.map(g=>g.teams.length);
   if(Math.min(...sz)!==Math.max(...sz))w.push(`Die Gruppen sind unterschiedlich groß (${sz.join(", ")} Teams), weil für gleich große Gruppen oder „Jeder gegen jeden“ die Zeit nicht reicht. Für die Finalrunde zählen die Plätze in der eigenen Gruppe. Werden Gruppenplätze untereinander verglichen, zählen Punkte pro Spiel.`);
   if(P.Qwant&&P.Q!==P.Qwant)w.push(`Für die gewählte Finalrunde gibt es zu wenige Mannschaften, der Plan startet deshalb direkt mit ${P.Q===4?"dem Halbfinale":P.Q===2?"dem Finale":"keiner Finalrunde"}.`);
@@ -621,7 +621,7 @@ function viewTeams(){
   <div class="teams">${cards}</div></div>`;
 }
 function viewSetup(){
-  const AUTO=new Set(["groups","setupMin","gameMin","changeMin","breakMin","koGameMin","finalMin"]);
+  const AUTO=new Set(["groups","setupMin","gameMin","changeMin","koGameMin","finalMin"]);
   const n=(k,l,lo,hi,suf)=>{if(k==="rebuildMin"){const on=P.Q>=4;return `<label class="f hl">${l}<input type="number" id="c-rebuildMin" data-cfg="rebuildMin" min="0" max="60" value="${esc(cfg.rebuildMin??10)}" ${on?"":"disabled"}><span class="hint">${on?"Umbaupause nach den Halbfinals":"gilt nur, wenn es Halbfinals gibt"}</span></label>`;}if(k==="setupMin"&&kickoff()!=null)return `<label class="f">${l}<input type="number" id="c-setupMin" value="${kickoff()-toMin(cfg.start)}" disabled><span class="hint">aus dem Anpfiff berechnet</span></label>`;const dis=cfg.auto&&AUTO.has(k);return `<label class="f">${l}<input type="number" id="c-${k}" data-cfg="${k}" min="${lo}" max="${hi}" value="${esc(cfg[k])}" ${dis?"disabled":""}>${dis?`<span class="hint">automatisch</span>`:suf?`<span class="hint">${suf}</span>`:""}</label>`;};
   const koName={QF:"Viertelfinale",SF:"Halbfinale",F:"Finale",NONE:"keine Finalrunde"};
   const AV=cfg.auto?autoVariants():null;
@@ -637,7 +637,7 @@ function viewSetup(){
   return `<div class="stack">${warnBox()}
   <div class="card stack"><h2>Automatische Planung</h2>
     <label class="f chk" style="padding-top:0"><input type="checkbox" id="c-auto" data-cfg="auto" ${cfg.auto?"checked":""}> Alles aus Teamzahl und Zeitfenster berechnen</label>
-    <p class="muted small">Eingeben musst du nur Beginn, Ende, Anzahl Mannschaften und Hallen. Gruppen, Spielzeiten, Aufbau und Pausen werden so gewählt, dass alles bis zum Ende passt. Den Anpfiff des ersten Spiels kannst du oben beim Turnier festlegen, Siegerehrung und Aufräumen unten bei den Zeiten. Die Varianten rechnen sich dann sofort neu. Zum Feinjustieren den Haken entfernen, dann sind alle Werte frei änderbar.</p>
+    <p class="muted small">Eingeben musst du nur Beginn, Ende, Anzahl Mannschaften und Hallen. Gruppen, Spielzeiten, Aufbau und Pausen werden so gewählt, dass alles bis zum Ende passt. Den Anpfiff des ersten Spiels kannst du oben beim Turnier festlegen, die Pause nach der Vorrunde, den Umbau, die Siegerehrung und das Aufräumen unten bei den Zeiten. Die Varianten rechnen sich dann sofort neu. Zum Feinjustieren den Haken entfernen, dann sind alle Werte frei änderbar.</p>
     ${autoTxt}</div>
   <div class="card stack"><h2>Turnier</h2><div class="form five">
     <label class="f">Name<input type="text" id="c-title" data-cfg="title" value="${esc(cfg.title)}"></label>
