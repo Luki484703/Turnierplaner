@@ -280,41 +280,52 @@ function buildRaw(){
   const G=int(cfg.groups,2,1,Math.max(1,Math.floor(N/2)));
   const H=int(cfg.halls,2,1,4);
   const game=int(cfg.gameMin,8,1,60),chg=int(cfg.changeMin,2,0,30);
-  const pooledMode=G%H!==0;
-  const groups=Array.from({length:G},(_,g)=>({name:LETTERS[g],idx:g,hall:pooledMode?null:g%H,teams:[]}));
+  const groups=Array.from({length:G},(_,g)=>({name:LETTERS[g],idx:g,hall:null,teams:[]}));
   cfg.teams.forEach((t,i)=>groups[i%G].teams.push(t.id));
   const t0=toMin(cfg.start)+int(cfg.setupMin,20,0,120);
-  const matches=[];let groupEnd=t0;
-  const hallSlots=[];
-  const push=(m,h,k)=>{const [x,y]=[m.a,m.b].sort();const st=t0+k*(game+chg);
-    matches.push({id:"g-"+x+"-"+y,kind:"G",group:m.group,hall:h,slot:k,a:m.a,b:m.b,start:st,dur:game});
-    groupEnd=Math.max(groupEnd,st+game);};
   const interleave=gs=>{const lists=gs.map(g=>roundRobin(g.teams).map(([a,b])=>({a,b,group:g.name})));
     const merged=[];const mx=Math.max(0,...lists.map(l=>l.length));
     for(let i=0;i<mx;i++)lists.forEach(l=>{if(l[i])merged.push(l[i])});return merged;};
-  if(pooledMode){
-    // alle Spiele gemeinsam auf die Hallen verteilen, kein Team zweimal gleichzeitig
-    const rem=interleave(groups);let prev=new Set();let k=0;
+  // Variante 1: alle Spiele gemeinsam auf die Hallen verteilen. Kein Team zweimal gleichzeitig,
+  // möglichst keine zwei Spiele direkt hintereinander, wer am längsten Pause hat, spielt zuerst.
+  const pooled=()=>{
+    const rem=interleave(groups),out=[],last={};let k=0;
     while(rem.length){
-      const used=new Set(),slot=[];
+      const used=new Set();let n=0;
+      const rest=id=>last[id]==null?-99:last[id];
+      const order=rem.map((m,i)=>({m,i,w:Math.max(rest(m.a),rest(m.b)),v:rest(m.a)+rest(m.b)})).sort((x,y)=>x.w-y.w||x.v-y.v||x.i-y.i).map(x=>x.m);
       for(const strict of [true,false]){
-        for(let i=0;i<rem.length&&slot.length<H;){
-          const m=rem[i];
-          if(!used.has(m.a)&&!used.has(m.b)&&(!strict||(!prev.has(m.a)&&!prev.has(m.b)))){slot.push(m);used.add(m.a);used.add(m.b);rem.splice(i,1);}
-          else i++;
+        for(const m of order){
+          if(n>=H)break;
+          if(m.done||used.has(m.a)||used.has(m.b))continue;
+          if(strict&&(rest(m.a)===k-1||rest(m.b)===k-1))continue;
+          m.done=true;used.add(m.a);used.add(m.b);out.push({m,h:n,k});n++;
         }
       }
-      slot.forEach((m,h)=>push(m,h,k));
-      for(let h=0;h<H;h++)hallSlots[h]=slot.length>h?k+1:(hallSlots[h]||0);
-      prev=used;k++;
+      for(let i=rem.length-1;i>=0;i--)if(rem[i].done)rem.splice(i,1);
+      used.forEach(id=>last[id]=k);k++;
     }
-  }else{
+    return {out,slots:k,mode:"pooled"};
+  };
+  // Variante 2: jede Gruppe fest in einer Halle (nur wenn die Gruppen glatt auf die Hallen aufgehen)
+  const perHall=()=>{
+    const out=[];let slots=0;
     for(let h=0;h<H;h++){
-      const ordered=spread(interleave(groups.filter(g=>g.hall===h)));
-      hallSlots[h]=ordered.length;
-      ordered.forEach((m,k)=>push(m,h,k));
+      const ordered=spread(interleave(groups.filter(g=>g.idx%H===h)));
+      ordered.forEach((m,k)=>out.push({m,h,k}));slots=Math.max(slots,ordered.length);
     }
-  }
+    return {out,slots,mode:"hall"};
+  };
+  let plan=pooled();
+  if(G%H===0&&H>1){const ph=perHall();if(ph.slots<=plan.slots)plan=ph;}
+  if(H===1)plan=perHall();
+  const pooledMode=plan.mode==="pooled";
+  if(!pooledMode)groups.forEach(g=>g.hall=g.idx%H);
+  const matches=[];let groupEnd=t0;
+  const hallSlots=Array(H).fill(0);
+  plan.out.forEach(({m,h,k})=>{const [x,y]=[m.a,m.b].sort();const st=t0+k*(game+chg);
+    matches.push({id:"g-"+x+"-"+y,kind:"G",group:m.group,hall:h,slot:k,a:m.a,b:m.b,start:st,dur:game});
+    groupEnd=Math.max(groupEnd,st+game);hallSlots[h]=Math.max(hallSlots[h],k+1);});
   // Finalrunde
   const Qwant={QF:8,SF:4,F:2,NONE:0}[cfg.ko]??4;
   let Q=Qwant;while(Q>N)Q/=2;if(Q<2)Q=0;
