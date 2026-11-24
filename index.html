@@ -182,6 +182,8 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const toMin=t=>{const m=/^(\d{1,2}):(\d{2})/.exec(t||"");return m?(+m[1])*60+(+m[2]):480};
 const fmt=m=>{m=Math.round(m);return String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0")};
 const int=(v,d,lo,hi)=>{v=parseInt(v,10);if(isNaN(v))v=d;return Math.max(lo,Math.min(hi,v))};
+/* Tatsächlicher Anpfiff des ersten Spiels (optional), sonst Beginn + Aufbau */
+const kickoff=()=>{const m=/^(\d{1,2}):(\d{2})/.exec(cfg.kickoff||"");if(!m)return null;return Math.max(toMin(cfg.start),(+m[1])*60+(+m[2]));};
 const num=v=>v===""||v==null||isNaN(+v)?null:+v;
 
 function ensureTeams(){
@@ -225,12 +227,10 @@ const koTxt=v=>v.Q===8?"Viertelfinale, Halbfinale"+(v.p3?", Spiel um Platz 3":""
 function autoVariants(){
   ensureTeams();
   const N=cfg.teams.length,H=int(cfg.halls,2,1,4),E=toMin(cfg.end);
-  const key=[N,H,cfg.start,cfg.end,!!cfg.third].join("|");
+  const key=[N,H,cfg.start,cfg.end,!!cfg.third,kickoff()||"",cfg.awardMin,cfg.cleanupMin].join("|");
   if(autoCache&&autoCache.key===key)return autoCache;
   const T=E-toMin(cfg.start);
-  cfg.setupMin=T>=180?20:T>=120?15:10;
-  cfg.cleanupMin=T>=180?20:T>=120?15:10;
-  cfg.awardMin=T>=120?10:5;
+  if(!kickoff())cfg.setupMin=T>=180?20:T>=120?15:10;
   cfg.changeMin=2;
   const maxG=Math.max(1,Math.floor(N/3));
   const tryOne=(Q,G,g)=>{
@@ -282,7 +282,7 @@ function buildRaw(){
   const game=int(cfg.gameMin,8,1,60),chg=int(cfg.changeMin,2,0,30);
   const groups=Array.from({length:G},(_,g)=>({name:LETTERS[g],idx:g,hall:null,teams:[]}));
   cfg.teams.forEach((t,i)=>groups[i%G].teams.push(t.id));
-  const t0=toMin(cfg.start)+int(cfg.setupMin,20,0,120);
+  const t0=kickoff()!=null?kickoff():toMin(cfg.start)+int(cfg.setupMin,20,0,120);
   const interleave=gs=>{const lists=gs.map(g=>roundRobin(g.teams).map(([a,b])=>({a,b,group:g.name})));
     const merged=[];const mx=Math.max(0,...lists.map(l=>l.length));
     for(let i=0;i<mx;i++)lists.forEach(l=>{if(l[i])merged.push(l[i])});return merged;};
@@ -613,8 +613,8 @@ function viewTeams(){
   <div class="teams">${cards}</div></div>`;
 }
 function viewSetup(){
-  const AUTO=new Set(["groups","setupMin","gameMin","changeMin","breakMin","koGameMin","finalMin","awardMin","cleanupMin"]);
-  const n=(k,l,lo,hi,suf)=>{const dis=cfg.auto&&AUTO.has(k);return `<label class="f">${l}<input type="number" id="c-${k}" data-cfg="${k}" min="${lo}" max="${hi}" value="${esc(cfg[k])}" ${dis?"disabled":""}>${dis?`<span class="muted small" style="font-weight:400">automatisch</span>`:suf?`<span class="muted small" style="font-weight:400">${suf}</span>`:""}</label>`;};
+  const AUTO=new Set(["groups","setupMin","gameMin","changeMin","breakMin","koGameMin","finalMin"]);
+  const n=(k,l,lo,hi,suf)=>{if(k==="setupMin"&&kickoff()!=null)return `<label class="f">${l}<input type="number" id="c-setupMin" value="${kickoff()-toMin(cfg.start)}" disabled><span class="muted small" style="font-weight:400">aus dem Anpfiff berechnet</span></label>`;const dis=cfg.auto&&AUTO.has(k);return `<label class="f">${l}<input type="number" id="c-${k}" data-cfg="${k}" min="${lo}" max="${hi}" value="${esc(cfg[k])}" ${dis?"disabled":""}>${dis?`<span class="muted small" style="font-weight:400">automatisch</span>`:suf?`<span class="muted small" style="font-weight:400">${suf}</span>`:""}</label>`;};
   const koName={QF:"Viertelfinale",SF:"Halbfinale",F:"Finale",NONE:"keine Finalrunde"};
   const AV=cfg.auto?autoVariants():null;
   const autoTxt=cfg.auto&&autoInfo?(autoInfo.tooLong?`<div class="note warn"><b>Achtung:</b> Selbst mit 5 Minuten Spielzeit reicht die Zeit nicht. Mehr Zeit, eine zusätzliche Halle oder weniger Teams helfen. Aktuell endet der Plan um ${fmt(P.planEnd)} Uhr.</div>`:
@@ -629,12 +629,13 @@ function viewSetup(){
   return `<div class="stack">${warnBox()}
   <div class="card stack"><h2>Automatische Planung</h2>
     <label class="f chk" style="padding-top:0"><input type="checkbox" id="c-auto" data-cfg="auto" ${cfg.auto?"checked":""}> Alles aus Teamzahl und Zeitfenster berechnen</label>
-    <p class="muted small">Eingeben musst du nur Beginn, Ende, Anzahl Mannschaften und Hallen. Gruppen, Spielzeiten, Aufbau, Pausen, Siegerehrung und Aufräumen werden so gewählt, dass alles bis zum Ende passt. Zum Feinjustieren den Haken entfernen, dann sind alle Werte frei änderbar.</p>
+    <p class="muted small">Eingeben musst du nur Beginn, Ende, Anzahl Mannschaften und Hallen. Gruppen, Spielzeiten, Aufbau und Pausen werden so gewählt, dass alles bis zum Ende passt. Den Anpfiff des ersten Spiels kannst du oben beim Turnier festlegen, Siegerehrung und Aufräumen unten bei den Zeiten. Die Varianten rechnen sich dann sofort neu. Zum Feinjustieren den Haken entfernen, dann sind alle Werte frei änderbar.</p>
     ${autoTxt}</div>
   <div class="card stack"><h2>Turnier</h2><div class="form">
     <label class="f">Name<input type="text" id="c-title" data-cfg="title" value="${esc(cfg.title)}"></label>
     <label class="f">Datum<input type="date" id="c-date" data-cfg="date" value="${esc(cfg.date)}"></label>
     <label class="f">Beginn<input type="time" id="c-start" data-cfg="start" value="${esc(cfg.start)}"></label>
+    <label class="f">Anpfiff erstes Spiel<input type="time" id="c-kickoff" data-cfg="kickoff" value="${esc(cfg.kickoff||"")}"><span class="muted small" style="font-weight:400">${cfg.kickoff?"alles danach richtet sich danach":"leer lassen = Beginn plus Aufbau"}</span></label>
     <label class="f">Ende inkl. Aufräumen<input type="time" id="c-end" data-cfg="end" value="${esc(cfg.end)}"></label>
   </div></div>
   <div class="card stack"><h2>Mannschaften und Gruppen</h2><div class="form">
