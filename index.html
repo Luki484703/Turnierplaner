@@ -168,11 +168,11 @@ details.tm summary{cursor:pointer;font-weight:600}
 "use strict";
 const LETTERS="ABCDEFGHIJKL";
 const DEF={
-  title:"Fußballturnier Jg. 8–10", date:"2026-11-20", start:"08:00", end:"11:15",
-  setupMin:40, numTeams:5, groups:1, halls:2, gameMin:12, changeMin:5, breakMin:10,
-  auto:false, koMode:"F", ko:"F", third:true, koGameMin:12, finalMin:15, awardMin:10, cleanupMin:15,
-  playersTotal:8, playersField:5, rebuildMin:10, seed:"anmeldung-2026-11-20a",
-  teams:[]
+  title:"Fußballturnier Jg. 5–7", date:"2026-11-27", start:"08:00", end:"11:15",
+  setupMin:40, numTeams:9, groups:1, halls:2, gameMin:12, changeMin:5, breakMin:10,
+  kickoff:"08:40", auto:true, koMode:"F", ko:"F", third:true, koGameMin:12, finalMin:15, awardMin:10, cleanupMin:15,
+  playersTotal:8, playersField:5, rebuildMin:10, seed:"anmeldung-2026-11-27a",
+  teams:[{"id": "t1", "name": "Team Sucuk", "klasse": "5a", "captain": "Cristiano Chiriac", "players": ["Cristiano Chiriac", "Jasin Lugbunari", "David Mikayelyan", "Omar Ramadan", "Anisha Schedel", "Daniel Elliot", "Mischa Nikolaus", "Nael Alwattar"]}, {"id": "t2", "name": "5b", "klasse": "5b", "captain": "Amir Prasko", "players": ["Amir Prasko", "Dario Tipan", "Timofii Maiorov", "Alex Omar", "Artem Maurer", "Mihail Dobrioglo", "Maxim Sokolovski", "Milan Vasquez-Peralta"]}, {"id": "t3", "name": "Die verrückten Vögel", "klasse": "5g", "captain": "Amelie Klass", "players": ["Ahmed Ali", "Bethel Kabu", "Nico Gerber", "Darius Katenberger", "Amelie Klass", "Timo Körner", "Ridwan Mohamed", "Maikel-Lennart Kellermann"]}, {"id": "t4", "name": "Mike Tyson", "klasse": "6a", "captain": "Ivan Zabolotnyi", "players": ["Benny Kirschmann", "Ivan Zabolotnyi", "Mohamed Mohamed Abdullahi", "Illia Dehtiannikov", "Maksym Parubets", "Artem Chuiko", "Don Tairi", ""]}, {"id": "t5", "name": "SV 6b", "klasse": "6b", "captain": "Alexander Ignatov", "players": ["Ilja Smirnov", "Alexander Ignatov", "Keon Lindsay", "Leon Kleinschroth", "Drago Surdo", "Maximilian Demian", "Musab Abdifatah Isse", "Noah Alloca"]}, {"id": "t6", "name": "FC Kukirien", "klasse": "6g", "captain": "Nick Naumann", "players": ["Nick Naumann", "Bastian Zeidler", "Flynn Danzer", "Andrew Lussert", "Kelfala Kamara", "Ozair Zeer / Milan Sultankunow", "Anna Schindler-Wilde / Alexandra Mihalas", "Bravelin Kabu"]}, {"id": "t7", "name": "Kong Strong", "klasse": "7a", "captain": "Aneuris Collado Diaz", "players": ["Aneuris Collado Diaz", "Nikita Buchmüller", "Ahmad Abou Shaker", "Steven Meinzer", "Luca Schneider", "Leon Kumpies", "Altin Kelmendi", "Mahad Muse"]}, {"id": "t8", "name": "FC Boller", "klasse": "7b", "captain": "Iqbal", "players": ["Iqbal", "Domenico", "Maximilian", "Fayz", "Tyler", "Matvey", "Daniel", ""]}, {"id": "t9", "name": "FC JAMI", "klasse": "JAMI 5/6", "captain": "Samuel Krompholz", "players": ["Mohamed Al'Hashi", "Musharaf Al'Hashi", "Ben Stremel", "Samuel Krompholz (Torwart)", "Sham Kattab", "Shabnam Lutfullahkhil", "Sumeya Bati Tiyo", "Jakob Blümm"]}]
 };
 let cfg=JSON.parse(JSON.stringify(DEF));
 let results={};
